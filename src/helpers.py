@@ -145,10 +145,10 @@ def simulate_burst(time, ncomp, burstparams, ybkg, return_model=False):
     x_counts = np.random.poisson(x_model)
     
     if return_model:
-        return x_model, x_counts
+        return x_model, np.array(x_counts, dtype=int)
 
     else:
-        return x_counts
+        return np.array(x_counts, dtype=int)
     
 def plot_simulated_burst(time, x_counts, x_model=None):
     """
@@ -179,3 +179,23 @@ def plot_simulated_burst(time, x_counts, x_model=None):
     ax.legend()
     plt.show()
 
+
+if __name__=="__main__":
+    time = np.linspace(0, 1.0, 1000)
+    N = 1
+    amp = 20.0
+    t0 = 0.4
+    rise = 0.03
+    skew = 5.0
+
+    ybkg = 5.0
+
+    x_model, x_counts = simulate_burst(
+    time=time,
+    ncomp=N,
+    burstparams=[t0, amp, rise, skew],
+    ybkg=ybkg,
+    return_model=True
+    )
+
+    print(x_counts)
