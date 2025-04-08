@@ -143,12 +143,12 @@ def simulate_burst(time, ncomp, burstparams, ybkg, return_model=False):
     
     x_model = combined_twoexp(time, t0, amp, rise, skew, ybkg)
     x_counts = np.random.poisson(x_model)
-    
+
     if return_model:
-        return x_model, np.array(x_counts, dtype=int)
+        return x_model, x_counts
 
     else:
-        return np.array(x_counts, dtype=int)
+        return x_counts
     
 def plot_simulated_burst(time, x_counts, x_model=None):
     """
@@ -177,7 +177,6 @@ def plot_simulated_burst(time, x_counts, x_model=None):
     ax.set_ylabel("Flux [arbitrary units]")
     ax.set_xlim(time[0], time[-1])
     ax.legend()
-    plt.show()
 
 
 if __name__=="__main__":
@@ -197,5 +196,4 @@ if __name__=="__main__":
     ybkg=ybkg,
     return_model=True
     )
-
     print(x_counts)
