@@ -97,8 +97,8 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         Returns:
             - z: samples from p(z), (num_samples, ...)
         """
-        z = self.p_data.sample(num_samples) # TODO return label as well, z,y
-        return z, torch.zeros_like(z) 
+        z = self.p_data.sample(num_samples) 
+        return z, torch.zeros_like(z) # dummy return value
 
     def sample_conditional_path(self, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         """
@@ -128,4 +128,21 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
             - conditional_vector_field: conditional vector field (num_samples, dim)
         """
         return (z - x) / (1 - t)
+
+class GuidedLinearProbabilityPath(LinearConditionalProbabilityPath):
+    
+    def __init__(self, p_simple: Sampleable, p_data: Sampleable):
+        super().__init__(p_simple, p_data)
+
+    def sample_conditioning_variable(self, num_samples: int) -> torch.Tensor:
+            """
+            Samples the conditioning variable and label z, y ~ p_data(x)
+            Args:
+                - num_samples: the number of samples
+            Returns:
+                - z: samples from p(z), (num_samples, ...)
+                - y: labels
+            """
+            z, y = self.p_data.sample(num_samples) 
+            return z, y     
     
