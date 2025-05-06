@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Type, Tuple, Dict
+from typing import Optional, Tuple
 import torch 
 import torch.nn as nn
-from torch.func import vmap, jacrev
 
 ###########################
 # Conditional prob path

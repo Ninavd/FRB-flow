@@ -1,92 +1,20 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Type, Tuple, Dict
 import torch 
 import torch.nn as nn
-from torch.func import vmap, jacrev
 from tqdm import tqdm
+
 from src.flow_matching.probability_path import ConditionalProbabilityPath
-
-##################
-# TRAINING
-#################
-
-def build_mlp(dims: List[int], activation: Type[torch.nn.Module] = torch.nn.SiLU):
-        mlp = []
-        for idx in range(len(dims) - 1):
-            mlp.append(torch.nn.Linear(dims[idx], dims[idx + 1]))
-            if idx < len(dims) - 2:
-                mlp.append(activation())
-        return torch.nn.Sequential(*mlp)
-
-class MLPVectorField(torch.nn.Module):
-    """
-    MLP-parameterization of the learned vector field u_t^theta(x)
-    """
-    def __init__(self, dim: int, hiddens: List[int]):
-        super().__init__()
-        self.dim = dim
-        self.net = build_mlp([dim + 1] + hiddens + [dim])
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor):
-        """
-        Args:
-        - x: (bs, dim)
-        Returns:
-        - u_t^theta(x): (bs, dim)
-        """
-        xt = torch.cat([x,t], dim=-1)
-        return self.net(xt)
-
-class MLPGuidedVectorField(torch.nn.Module):
-    """
-    MLP-parameterization of the learned vector field u_t^theta(x)
-    """
-    def __init__(self, dim: int, hiddens: List[int], y_dim=1000):
-        super().__init__()
-        self.dim = dim
-        self.y_dim = y_dim # length of lightcurve
-
-        # input size is parameter dimension + time value + length of light curve (condition dimension)
-        input_size = dim + 1 + self.y_dim 
-        
-        # output size is parameter dimension
-        output_size = dim 
-
-        self.net = build_mlp([input_size] + hiddens + [output_size])
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor):
-        """
-        Args:
-        - x: (bs, dim) 
-        - t: (bs, 1)
-        - y: (bs, y_dim) [the condition tensor]
-        Returns:
-        - u_t^theta(x): (bs, dim)
-        """
-        xt = torch.cat([x, t, y], dim=-1)
-        return self.net(xt)
-
-MiB = 1024 ** 2
-
-def model_size_b(model: nn.Module) -> int:
-    """
-    Returns model size in bytes. Based on https://discuss.pytorch.org/t/finding-model-size/130275/2
-    Args:
-    - model: self-explanatory
-    Returns:
-    - size: model size in bytes
-    """
-    size = 0
-    for param in model.parameters():
-        size += param.nelement() * param.element_size()
-    for buf in model.buffers():
-        size += buf.nelement() * buf.element_size()
-    return size
+from src.flow_matching.helpers import model_size_b
 
 class Trainer(ABC):
+    """
+    Generic trainer class.
+    """
+    
     def __init__(self, model: nn.Module):
         super().__init__()
         self.model = model
+        self.MiB = 1024 ** 2 # max model size
 
     @abstractmethod
     def get_train_loss(self, **kwargs) -> torch.Tensor:
@@ -98,7 +26,7 @@ class Trainer(ABC):
     def train(self, num_epochs: int, device: torch.device, lr: float = 1e-3, **kwargs) -> torch.Tensor:
         # Report model size
         size_b = model_size_b(self.model)
-        print(f'Training model with size: {size_b / MiB:.3f} MiB')
+        print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
         
         # Start
         self.model.to(device)
@@ -118,7 +46,7 @@ class Trainer(ABC):
         self.model.eval()
 
 class ConditionalFlowMatchingTrainer(Trainer):
-    def __init__(self, path: ConditionalProbabilityPath, model: MLPVectorField, **kwargs):
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
         self.i = 0
@@ -152,7 +80,7 @@ class ConditionalFlowMatchingTrainer(Trainer):
         return average
     
 class GuidedConditionalFlowMatchingTrainer(Trainer):
-    def __init__(self, path: ConditionalProbabilityPath, model: MLPVectorField, **kwargs):
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
         self.i = 0

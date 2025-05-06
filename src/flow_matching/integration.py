@@ -1,14 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Type, Tuple, Dict
 import torch 
-import torch.nn as nn
-from torch.func import vmap, jacrev
 from tqdm import tqdm
-from src.flow_matching.training import MLPVectorField
 
-#####################
-#  ODE integration
-#####################
+from src.flow_matching.models import MLPVectorField
 
 class ODE(ABC):
     @abstractmethod
