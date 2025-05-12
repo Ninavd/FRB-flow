@@ -1,6 +1,9 @@
-from abc import ABC, abstractmethod
+import numpy as np
 import torch 
 import torch.nn as nn
+
+from abc import ABC, abstractmethod
+from datetime import datetime
 from tqdm import tqdm
 
 from src.flow_matching.probability_path import ConditionalProbabilityPath
@@ -23,7 +26,7 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    def train(self, num_epochs: int, device: torch.device, lr: float = 1e-3, **kwargs) -> torch.Tensor:
+    def train(self, num_epochs: int, device: torch.device, lr: float = 1e-3, save_checkpoint=True, **kwargs) -> torch.Tensor:
         # Report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -32,18 +35,42 @@ class Trainer(ABC):
         self.model.to(device)
         opt = self.get_optimizer(lr)
         self.model.train()
+        losses = np.zeros(num_epochs)
 
         # Train loop
         pbar = tqdm(enumerate(range(num_epochs)))
         for idx, epoch in pbar:
             opt.zero_grad()
+
             loss = self.get_train_loss(**kwargs)
+            losses[idx] = loss
             loss.backward()
+
             opt.step()
+
+            if save_checkpoint and (epoch+1) % 10 == 0:
+                self.save_checkpoint(epoch, opt, losses)
+
             pbar.set_description(f'Epoch {idx}, loss: {loss.item():.3f}')
 
         # Finish
         self.model.eval()
+    
+    def save_checkpoint(self, epoch, optimizer, losses, path="../checkpoints/"):
+        """
+        Saves training checkpoint.
+        """
+        timestamp = datetime.now().strftime('%d-%m_%H:%M:%S')
+        save_dict = {
+            "epoch": epoch,
+            "model_state_dict":self.model.state_dict(),
+            "optimizer_state_dict":optimizer.state_dict(),
+            "losses":losses,
+            "timestamp":timestamp
+        }
+        
+        filename = f"checkpoint_epoch{epoch}"
+        torch.save(save_dict, path + filename + '.pth')
 
 class ConditionalFlowMatchingTrainer(Trainer):
     def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):

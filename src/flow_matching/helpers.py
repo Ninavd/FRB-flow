@@ -1,5 +1,6 @@
 import torch.nn as nn 
 from typing import List, Type
+import torch 
 
 def model_size_b(model: nn.Module) -> int:
     """
@@ -33,3 +34,12 @@ def build_mlp(dims: List[int], activation: Type[nn.Module] = nn.SiLU):
             mlp.append(activation())
     
     return nn.Sequential(*mlp)
+
+def load_model(model, path):
+    """
+    Loads model from checkpoint.
+    """
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_save_dict'])
+    losses = checkpoint["losses"]
+    return model, losses
