@@ -40,6 +40,7 @@ def load_model(model, path):
     Loads model from checkpoint.
     """
     checkpoint = torch.load(path)
-    model.load_state_dict(checkpoint['model_save_dict'])
+    model.load_state_dict(checkpoint['model_state_dict'])
     losses = checkpoint["losses"]
+    # NOTE: set model to evaluation mode if you dont train  it further
     return model, losses
