@@ -11,7 +11,7 @@ from src.flow_matching.helpers import model_size_b
 
 class Trainer(ABC):
     """
-    Generic trainer class.
+    Generic trainer base class.
     """
     
     def __init__(self, model: nn.Module):
@@ -48,7 +48,7 @@ class Trainer(ABC):
 
             opt.step()
 
-            if save_checkpoint and (epoch+1) % 10 == 0:
+            if save_checkpoint and (epoch+1) % 100 == 0:
                 self.save_checkpoint(epoch, opt, losses)
 
             pbar.set_description(f'Epoch {idx}, loss: {loss.item():.3f}')
@@ -69,14 +69,13 @@ class Trainer(ABC):
             "timestamp":timestamp
         }
         
-        filename = f"checkpoint_epoch{epoch}"
+        filename = f"training_checkpoint"
         torch.save(save_dict, path + filename + '.pth')
 
 class ConditionalFlowMatchingTrainer(Trainer):
     def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
-        self.i = 0
 
     def get_train_loss(self, batch_size: int) -> torch.Tensor:
         # samples
@@ -100,17 +99,12 @@ class ConditionalFlowMatchingTrainer(Trainer):
 
         average =  total_loss / batch_size
 
-        self.i += 1
-        if self.i == 1:
-          print(average.shape, losses.shape, batch_size, z_batch[0])
-
         return average
     
 class GuidedConditionalFlowMatchingTrainer(Trainer):
     def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
-        self.i = 0
 
     def get_train_loss(self, batch_size: int) -> torch.Tensor:
         # Only change here is label y should be an input to the learned vecotr field
@@ -134,9 +128,5 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         total_loss = torch.sum(losses)
 
         average =  total_loss / batch_size
-
-        self.i += 1
-        if self.i == 1:
-          print(average.shape, losses.shape, batch_size, z_batch[0])
 
         return average
