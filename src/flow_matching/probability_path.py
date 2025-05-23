@@ -1,26 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple
+from typing import Tuple
 import torch 
 import torch.nn as nn
+from src.flow_matching.distributions import Sampleable 
 
 ###########################
 # Conditional prob path
 ###########################
-
-class Sampleable(ABC):
-    """
-    Base class for distribution which can be sampled from
-    """ 
-    @abstractmethod
-    def sample(self, num_samples: int) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """
-        Args:
-            - num_samples: the desired number of samples
-        Returns:
-            - samples: shape (batch_size, ...)
-            - labels: shape (batch_size, label_dim)
-        """
-        pass
 
 class ConditionalProbabilityPath(nn.Module, ABC):
     """
