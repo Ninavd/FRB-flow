@@ -31,27 +31,28 @@ class Trainer(ABC):
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
         
-        # Start
+        # Initialize
         self.model.to(device)
         opt = self.get_optimizer(lr)
         self.model.train()
         losses = np.zeros(num_epochs)
 
         # Train loop
-        pbar = tqdm(enumerate(range(num_epochs)))
-        for idx, epoch in pbar:
+        progress_bar = tqdm(range(num_epochs))
+        for epoch in progress_bar:
             opt.zero_grad()
 
             loss = self.get_train_loss(**kwargs)
-            losses[idx] = loss
+            losses[epoch] = loss
             loss.backward()
 
             opt.step()
 
+            # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
                 self.save_checkpoint(epoch, opt, losses)
 
-            pbar.set_description(f'Epoch {idx}, loss: {loss.item():.3f}')
+            progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}')
 
         # Finish
         self.model.eval()
@@ -73,6 +74,10 @@ class Trainer(ABC):
         torch.save(save_dict, path + filename + '.pth')
 
 class ConditionalFlowMatchingTrainer(Trainer):
+
+    """
+    Trainer for unguided flow matching.
+    """
     def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
@@ -83,7 +88,7 @@ class ConditionalFlowMatchingTrainer(Trainer):
         t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
         x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
 
-        # monte carlo estimate of loss
+        # we take a monte carlo estimate of the loss:
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
         
         differences = (
@@ -102,6 +107,10 @@ class ConditionalFlowMatchingTrainer(Trainer):
         return average
     
 class GuidedConditionalFlowMatchingTrainer(Trainer):
+
+    """
+    Trainer for guided flow matching model.
+    """
     def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
         super().__init__(model, **kwargs)
         self.path = path
@@ -113,7 +122,7 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
         x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
 
-        # monte carlo estimate of loss
+        # we take a monte carlo estimate of the loss
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
         
         differences = (

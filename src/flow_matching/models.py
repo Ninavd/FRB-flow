@@ -7,6 +7,11 @@ class MLPVectorField(torch.nn.Module):
     MLP-parameterization of the learned vector field u_t^theta(x)
     """
     def __init__(self, dim: int, hiddens: List[int]):
+        """
+        Args:
+        - dim: dimension of the parameters
+        - hiddens: list of hidden layer sizes
+        """
         super().__init__()
         self.dim = dim
         self.net = build_mlp([dim + 1] + hiddens + [dim])
@@ -23,9 +28,15 @@ class MLPVectorField(torch.nn.Module):
 
 class MLPGuidedVectorField(torch.nn.Module):
     """
-    MLP-parameterization of the learned vector field u_t^theta(x)
+    MLP-parameterization of the learned vector field u_t^theta(x | y)
     """
-    def __init__(self, dim: int, hiddens: List[int], y_dim=1000):
+    def __init__(self, dim: int, hiddens: List[int], y_dim: int=1000):
+        """
+        Args:
+        - dim: number of parameters
+        - hiddens: list of hidden layer sizes
+        - y_dim: length of light curve
+        """
         super().__init__()
         self.dim = dim
         self.y_dim = y_dim # length of lightcurve

@@ -9,7 +9,7 @@ import torch.nn as nn
 
 class Sampleable(ABC):
     """
-    Distribution which can be sampled from
+    Base class for distribution which can be sampled from
     """ 
     @abstractmethod
     def sample(self, num_samples: int) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
@@ -35,15 +35,15 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         """
         Samples from the marginal distribution p_t(x) = p_t(x|z) p(z)
         Args:
-            - t: time (num_samples, 1, 1, 1)
+            - t: time (num_samples, 1)
         Returns:
-            - x: samples from p_t(x), (num_samples, c, h, w)
+            - x: samples from p_t(x), (num_samples, dim)
         """
         num_samples = t.shape[0]
         # Sample conditioning variable z ~ p(z)
-        z, _ = self.sample_conditioning_variable(num_samples) # (num_samples, c, h, w)
+        z, _ = self.sample_conditioning_variable(num_samples) 
         # Sample conditional probability path x ~ p_t(x|z)
-        x = self.sample_conditional_path(z, t) # (num_samples, c, h, w)
+        x = self.sample_conditional_path(z, t) # (num_samples, dim)
         return x
 
     @abstractmethod
@@ -53,7 +53,7 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         Args:
             - num_samples: the number of samples
         Returns:
-            - z: (num_samples, c, h, w)
+            - z: (num_samples, dim)
             - y: (num_samples, label_dim)
         """
         pass
@@ -63,10 +63,10 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         """
         Samples from the conditional distribution p_t(x|z)
         Args:
-            - z: conditioning variable (num_samples, c, h, w)
-            - t: time (num_samples, 1, 1, 1)
+            - z: conditioning variable (num_samples, dim)
+            - t: time (num_samples, 1)
         Returns:
-            - x: samples from p_t(x|z), (num_samples, c, h, w)
+            - x: samples from p_t(x|z), (num_samples, dim)
         """
         pass
         
@@ -75,11 +75,11 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         """
         Evaluates the conditional vector field u_t(x|z)
         Args:
-            - x: position variable (num_samples, c, h, w)
-            - z: conditioning variable (num_samples, c, h, w)
-            - t: time (num_samples, 1, 1, 1)
+            - x: position variable (num_samples, dim)
+            - z: conditioning variable (num_samples, dim)
+            - t: time (num_samples, 1)
         Returns:
-            - conditional_vector_field: conditional vector field (num_samples, c, h, w)
+            - conditional_vector_field: conditional vector field (num_samples, dim)
         """ 
         pass
     
@@ -140,8 +140,7 @@ class GuidedLinearProbabilityPath(LinearConditionalProbabilityPath):
                 - num_samples: the number of samples
             Returns:
                 - z: samples from p(z), (num_samples, ...)
-                - y: labels
+                - y: labels (num_samples, label_dim)
             """
             z, y = self.p_data.sample(num_samples) 
             return z, y     
-    
