@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
+import numpy as np
 from typing import Tuple, Optional
 import torch
 import torch.distributions as D
+
+from src.simulator import Model, BurstSimulator
 
 class Sampleable(ABC):
     """
@@ -17,6 +20,81 @@ class Sampleable(ABC):
             - labels: shape (batch_size, label_dim)
         """
         pass
+
+# Samplelable prior for t0_1 and t0_2
+class Prior(Sampleable):
+
+    def sample(self, num_samples: int) -> torch.Tensor:
+        """
+        Args:
+            num_samples: number of samples to generate
+        Returns:
+            torch.Tensor: shape (num_samples, 2)
+        """
+        t0_samples, _ = torch.sort(torch.rand((num_samples, 2)), dim=1)
+        return t0_samples
+
+# Samplelable posterior needs to sample prior and generate simulated data. 
+class Posterior(Sampleable):
+
+    """
+    Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
+    """
+    
+    def sample(self, num_samples: int, prior=Prior()) -> Tuple[torch.Tensor]:
+        """
+        Args:
+            num_samples: number of samples to generate
+        Returns:
+            torch.Tensor: shape (num_samples, 2)
+            torch.Tensor: shape (num_samples, 100)
+        """
+        
+        # fixed parameters
+        N = 2
+        time = np.linspace(0, 1.0, 1000)
+        amp  = 25.0
+        rise = 0.03
+        skew = 5
+        ybkg = 5.0
+
+        # t0 samples 
+        prior_samples = prior.sample((num_samples))
+
+        # generate simulated data from prior samples
+        simulation_time_resolution = 1000
+        simulations = torch.zeros((num_samples, simulation_time_resolution))
+
+        # TODO: find a cleaner way to do this
+        for idx in range(num_samples):
+
+            prior_sample = prior_samples[idx]
+            
+            # parameters of each burst component
+            burstparams = {
+                't0'   : list(prior_sample.cpu().numpy()),
+                'amp'  : [amp, amp],
+                'rise' : [rise, rise],
+                'skew' : [skew, skew]
+            }
+
+            # initialize burst model
+            model = Model(
+                time=time,
+                ncomp=N, 
+                burstparams=burstparams, 
+                ybkg=ybkg
+                )
+            
+            # generate simulated light curve
+            simulator = BurstSimulator(model)
+            x_counts = simulator.simulate_burst()
+            x_counts = torch.Tensor(x_counts)
+
+            # save to array
+            simulations[idx, :] = x_counts
+
+        return prior_samples, simulations
 
 class Gaussian(torch.nn.Module, Sampleable):
     """
