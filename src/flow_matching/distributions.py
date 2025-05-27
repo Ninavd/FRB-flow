@@ -40,6 +40,27 @@ class Posterior(Sampleable):
     """
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
     """
+
+    def __init__(self):
+        super().__init__()
+
+        # fixed burst parameters
+        self.N = 2
+        self.time = np.linspace(0, 1.0, 1000)
+        self.ybkg = 5.0
+        
+        # fixed component parameters
+        amp  = 25.0
+        rise = 0.03
+        skew = 5
+        
+        # parameters of each burst component
+        self.burstparams = {
+            't0'   : [None, None], # to be sampled from prior
+            'amp'  : [amp, amp],
+            'rise' : [rise, rise],
+            'skew' : [skew, skew]
+        }
     
     def sample(self, num_samples: int, prior=Prior()) -> Tuple[torch.Tensor]:
         """
@@ -49,52 +70,40 @@ class Posterior(Sampleable):
             torch.Tensor: shape (num_samples, 2)
             torch.Tensor: shape (num_samples, 100)
         """
-        
-        # fixed parameters
-        N = 2
-        time = np.linspace(0, 1.0, 1000)
-        amp  = 25.0
-        rise = 0.03
-        skew = 5
-        ybkg = 5.0
-
         # t0 samples 
         prior_samples = prior.sample((num_samples))
 
-        # generate simulated data from prior samples
+        burstparams = self.burstparams
         simulation_time_resolution = 1000
         simulations = torch.zeros((num_samples, simulation_time_resolution))
 
         # TODO: find a cleaner way to do this
+        # sample simulated data from prior samples
         for idx in range(num_samples):
-
+            
+            # samples new peaktimes
             prior_sample = prior_samples[idx]
-            
-            # parameters of each burst component
-            burstparams = {
-                't0'   : list(prior_sample.cpu().numpy()),
-                'amp'  : [amp, amp],
-                'rise' : [rise, rise],
-                'skew' : [skew, skew]
-            }
+            burstparams['t0'] = list(prior_sample.cpu().numpy())
 
-            # initialize burst model
-            model = Model(
-                time=time,
-                ncomp=N, 
-                burstparams=burstparams, 
-                ybkg=ybkg
-                )
-            
-            # generate simulated light curve
-            simulator = BurstSimulator(model)
-            x_counts = simulator.simulate_burst()
-            x_counts = torch.Tensor(x_counts)
-
-            # save to array
-            simulations[idx, :] = x_counts
+            # simulate with new params and save to array
+            simulated_lightcurve = self.light_curve_sample(burstparams=burstparams)
+            simulations[idx, :] = simulated_lightcurve
 
         return prior_samples, simulations
+    
+    def light_curve_sample(self, **kwargs) -> torch.Tensor:
+        """
+        Simulates lightcurve for given parameters.
+        """
+        # initialize burst model
+        model = Model(time=self.time, ncomp=self.N, ybkg=self.ybkg, **kwargs)
+        
+        # simulate noisy light curve
+        simulator = BurstSimulator(model)
+        x_counts = simulator.simulate_burst()
+        x_counts = torch.Tensor(x_counts)
+
+        return torch.Tensor(x_counts)
 
 class Gaussian(torch.nn.Module, Sampleable):
     """
