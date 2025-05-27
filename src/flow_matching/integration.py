@@ -1,24 +1,5 @@
-from abc import ABC, abstractmethod
 import torch 
 from tqdm import tqdm
-
-class ODE(ABC):
-
-    """
-    Abstract base class for ODE.
-    """
-
-    @abstractmethod
-    def drift_coefficient(self, xt: torch.Tensor, t: torch.Tensor, **kwargs) -> torch.Tensor:
-        """
-        Returns the drift coefficient of the ODE.
-        Args:
-            - xt: state at time t, shape (bs, dim)
-            - t: time, shape (bs, 1)
-        Returns:
-            - drift_coefficient: shape (bs, dim)
-        """
-        pass
 
 class EulerODESolver():
 
@@ -26,8 +7,8 @@ class EulerODESolver():
     Solves ODE with Euler method.
     """
 
-    def __init__(self, ode: ODE):
-        self.ode = ode
+    def __init__(self, vector_field: torch.nn.Module):
+        self.vector_field = vector_field
         
     def step(self, xt: torch.Tensor, t: torch.Tensor, h: torch.Tensor, **kwargs):
         """
@@ -39,7 +20,7 @@ class EulerODESolver():
         Returns:
             - nxt: state at time t + dt (bs, dim)
         """
-        return xt + self.ode.drift_coefficient(xt,t, **kwargs) * h
+        return xt + self.vector_field(xt,t, **kwargs) * h
 
     @torch.no_grad()
     def solve(self, x: torch.Tensor, ts: torch.Tensor, **kwargs):
@@ -85,20 +66,3 @@ class EulerODESolver():
             xs.append(x.clone())
 
         return torch.stack(xs, dim=1)
-
-class LearnedVectorFieldODE(ODE):
-    """
-    ODE where u_t is the learned vector field.
-    """
-    def __init__(self, net: torch.nn.Module):
-        self.net = net
-
-    def drift_coefficient(self, x: torch.Tensor, t: torch.Tensor, **kwargs) -> torch.Tensor:
-        """
-        Args:
-            - x: (bs, dim)
-            - t: (bs, 1)
-        Returns:
-            - u_t: (bs, dim)
-        """
-        return self.net(x, t, **kwargs)
