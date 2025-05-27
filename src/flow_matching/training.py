@@ -56,6 +56,7 @@ class Trainer(ABC):
 
         # Finish
         self.model.eval()
+        return losses
     
     def save_checkpoint(self, epoch, optimizer, losses, path="../checkpoints/"):
         """
