@@ -38,8 +38,9 @@ time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
 vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], y_dim=latent_dim, time_seq_encoder=time_seq_encoder)
 
 trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
-losses = trainer.train(20, device, 5e-4, save_checkpoint=True, batch_size=256)
+losses = trainer.train(101, device, 5e-4, save_checkpoint=True, batch_size=256)
 
+print('\n')
 # ___________________________________________
 #
 #               EVALUATION
@@ -59,7 +60,7 @@ plt.xlabel('step')
 plt.ylabel("average loss")
 plt.title("Evolution of loss")
 plt.legend()
-plt.savefig('loss_log-linear.png')
+plt.savefig('loss_log-linear.png', bbox_inches="tight")
 
 # loglog
 plt.figure()
@@ -71,7 +72,7 @@ plt.xlabel('step')
 plt.ylabel("average loss")
 plt.title("Evolution of loss")
 plt.legend()
-plt.savefig('loss_log-log.png')
+plt.savefig('loss_log-log.png', bbox_inches="tight")
 
 # generate one instance of simulated data to guide prior samples with
 
