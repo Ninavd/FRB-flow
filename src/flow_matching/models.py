@@ -62,7 +62,6 @@ class MLPGuidedVectorField(nn.Module):
         """
         if self.time_seq_encoder is not None:
             y = self.time_seq_encoder(y)
-
         xt = torch.cat([x, t, y], dim=-1)
         return self.net(xt)
 
@@ -103,6 +102,20 @@ class FRBLightCurveCNN(nn.Module):
         y = self.pool(y).squeeze(-1)              # (B,C_last)
         return self.proj(y)                       # (B,latent_dim)
 
+class LightCurveThinner(nn.Module):
+    """
+    Simple 'encoder' for time series.
+    Thins it out by only keeping every N-th bin.
+    """
+    def __init__(self, latent_dim):
+        assert 1000 % latent_dim == 0, 'Invalid latent dimension (time series length not divisible by latent_dim)'
+        super().__init__()
+        
+        self.stride = 1000 // latent_dim
+
+    def forward(self, x): # x: (B, ≥1)
+        return x[:, ::self.stride]
+        
 if __name__=="__main__":
     import numpy as np
     encoder = FRBLightCurveCNN()
