@@ -32,6 +32,7 @@ class Trainer(ABC):
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
         
         # Initialize
+        self.path.to(device)
         self.model.to(device)
         opt = self.get_optimizer(lr)
         self.model.train()
@@ -42,7 +43,7 @@ class Trainer(ABC):
         for epoch in progress_bar:
             opt.zero_grad()
 
-            loss = self.get_train_loss(**kwargs)
+            loss = self.get_train_loss(device, **kwargs)
             losses[epoch] = loss
             loss.backward()
 
@@ -116,16 +117,20 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         super().__init__(model, **kwargs)
         self.path = path
 
-    def get_train_loss(self, batch_size: int) -> torch.Tensor:
+    def get_train_loss(self, device: torch.device, batch_size: int) -> torch.Tensor:
         # Only change here is label y should be an input to the learned vecotr field
         # samples
         z_batch, y_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
         t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
         x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
 
+        # put data on the doomsday device
+        z_batch, y_batch = z_batch.to(device), y_batch.to(device)
+        t_batch = t_batch.to(device)
+        x_batch = x_batch.to(device)
+
         # we take a monte carlo estimate of the loss
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
-        
         differences = (
             self.model(x_batch, t_batch, y_batch)
             - self.path.conditional_vector_field(x_batch, z_batch, t_batch)
