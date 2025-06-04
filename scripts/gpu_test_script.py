@@ -106,7 +106,7 @@ model = Model(time=time,ncomp=N, burstparams=burstparams, ybkg=ybkg)
 simulator = BurstSimulator(model)
 x_counts = simulator.simulate_burst() 
 
-num_samples = 5000  # number of prior samples to transform 
+num_samples = 20000  # number of prior samples to transform 
 num_marginals = 5   # number of snapshots
 
 # TODO: maybe do this in batches
