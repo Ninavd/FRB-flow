@@ -4,12 +4,13 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 sys.path.append('..')
 print(sys.path)
+
 from src.simulator import Model, BurstSimulator
 from src.flow_matching.distributions import Prior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.integration import EulerODESolver
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner
 from src.helpers import record_every, hist2d_samples
 
 import numpy as np
@@ -34,7 +35,6 @@ path = GuidedLinearProbabilityPath(
 
 latent_dim = 128
 time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
-
 vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], y_dim=latent_dim, time_seq_encoder=time_seq_encoder)
 
 trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)

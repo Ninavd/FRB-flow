@@ -1,13 +1,15 @@
 import numpy as np
+import os
 import torch 
 import torch.nn as nn
+import yaml 
 
 from abc import ABC, abstractmethod
 from datetime import datetime
 from tqdm import tqdm
 
 from src.flow_matching.probability_path import ConditionalProbabilityPath
-from src.flow_matching.helpers import model_size_b
+from src.flow_matching.helpers import model_size_b, create_run_folder
 
 class Trainer(ABC):
     """
@@ -26,7 +28,7 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    def train(self, num_epochs: int, device: torch.device, lr: float = 1e-3, save_checkpoint=True, **kwargs) -> torch.Tensor:
+    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, save_checkpoint=True, batch_size: int = 256, **kwargs) -> torch.Tensor:
         # Report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -38,12 +40,17 @@ class Trainer(ABC):
         self.model.train()
         losses = np.zeros(num_epochs)
 
+        # if save_checkpoint=true, create run folder and save settings
+        if save_checkpoint:
+            save_path = create_run_folder(path="../checkpoints")
+            self.save_config_file(num_epochs, lr, batch_size, save_path)
+        
         # Train loop
         progress_bar = tqdm(range(num_epochs))
         for epoch in progress_bar:
             opt.zero_grad()
 
-            loss = self.get_train_loss(device, **kwargs)
+            loss = self.get_train_loss(device, batch_size, **kwargs)
             losses[epoch] = loss
             loss.backward()
 
@@ -51,7 +58,7 @@ class Trainer(ABC):
 
             # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
-                self.save_checkpoint(epoch, opt, losses)
+                self.save_checkpoint(epoch, opt, losses, path=save_path)
 
             progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}')
 
@@ -73,7 +80,30 @@ class Trainer(ABC):
         }
         
         filename = f"training_checkpoint"
-        torch.save(save_dict, path + filename + '.pth')
+        torch.save(save_dict, os.path.join(path, filename + '.pth'))
+
+    def save_config_file(self, num_epochs, lr, batch_size, path):
+        """
+        Save yaml with training and model settings
+        """
+        if self.model.time_seq_encoder is None:
+            t_encoder_config = None 
+        else:
+            t_encoder_config = self.model.time_seq_encoder.get_config()
+        config = {
+            "model": self.model.get_config(),
+            "time_seq_encoder":t_encoder_config,
+            "training":
+            {
+                "num_epochs":num_epochs,
+                "learning_rate":lr,
+                "batch_size":batch_size,
+                "optimizer":"adam"
+            }
+        }
+
+        with open(os.path.join(path, "config.yaml"), "w") as f:
+            yaml.dump(config, f, sort_keys=False)
 
 class ConditionalFlowMatchingTrainer(Trainer):
 

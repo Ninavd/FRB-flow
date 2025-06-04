@@ -1,3 +1,5 @@
+from datetime import datetime
+import os
 import torch.nn as nn 
 from typing import List, Type
 import torch 
@@ -44,3 +46,22 @@ def load_model(model, path):
     losses = checkpoint["losses"]
     # NOTE: set model to evaluation mode if you dont train  it further
     return model, losses
+
+def create_run_folder(path):
+    """
+    Creates folder in path to save training checkpoints and config file.
+    """
+    # check path exists
+    if not os.path.isdir(path):
+        raise Exception(f"{path} does not exist! The cwd is {os.getcwd()}")
+    
+    # generate foldername w timestamp
+    timestamp = datetime.now().strftime("%d_%m_%H%M")
+    folder_name = "run_" + timestamp
+    full_path = path + '/' + folder_name
+
+    # create run folder
+    os.makedirs(full_path, exist_ok=True)
+
+    # return relative path
+    return full_path
