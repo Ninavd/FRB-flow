@@ -39,7 +39,7 @@ time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
 vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], y_dim=latent_dim, time_seq_encoder=time_seq_encoder)
 
 trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
-losses = trainer.train(101, device, 5e-4, save_checkpoint=True, batch_size=256)
+losses = trainer.train(100000, device, 5e-4, save_checkpoint=True, batch_size=2048)
 
 print('\n')
 # ___________________________________________
