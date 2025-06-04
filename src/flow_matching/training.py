@@ -42,8 +42,8 @@ class Trainer(ABC):
 
         # if save_checkpoint=true, create run folder and save settings
         if save_checkpoint:
-            save_path = create_run_folder(path="../checkpoints")
-            self.save_config_file(num_epochs, lr, batch_size, save_path)
+            self.save_path = create_run_folder(path="../checkpoints")
+            self.save_config_file(num_epochs, lr, batch_size, self.save_path)
         
         # Train loop
         progress_bar = tqdm(range(num_epochs))
@@ -58,7 +58,7 @@ class Trainer(ABC):
 
             # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
-                self.save_checkpoint(epoch, opt, losses, path=save_path)
+                self.save_checkpoint(epoch, opt, losses)
 
             progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}')
 
@@ -66,7 +66,7 @@ class Trainer(ABC):
         self.model.eval()
         return losses
     
-    def save_checkpoint(self, epoch, optimizer, losses, path="../checkpoints/"):
+    def save_checkpoint(self, epoch, optimizer, losses):
         """
         Saves training checkpoint.
         """
@@ -80,7 +80,7 @@ class Trainer(ABC):
         }
         
         filename = f"training_checkpoint"
-        torch.save(save_dict, os.path.join(path, filename + '.pth'))
+        torch.save(save_dict, os.path.join(self.save_path, filename + '.pth'))
 
     def save_config_file(self, num_epochs, lr, batch_size, path):
         """
@@ -90,15 +90,16 @@ class Trainer(ABC):
             t_encoder_config = None 
         else:
             t_encoder_config = self.model.time_seq_encoder.get_config()
+        
         config = {
-            "model": self.model.get_config(),
-            "time_seq_encoder":t_encoder_config,
+            "model"           : self.model.get_config(),
+            "time_seq_encoder": t_encoder_config,
             "training":
             {
-                "num_epochs":num_epochs,
-                "learning_rate":lr,
-                "batch_size":batch_size,
-                "optimizer":"adam"
+                "num_epochs"   : num_epochs,
+                "learning_rate": lr,
+                "batch_size"   : batch_size,
+                "optimizer"    : "adam"
             }
         }
 

@@ -1,3 +1,4 @@
+import os
 import sys
 from corner import corner
 from numpy.lib.stride_tricks import sliding_window_view
@@ -46,6 +47,10 @@ print('\n')
 #               EVALUATION
 # ___________________________________________
 
+# where to store the plots
+save_path = os.path.join(trainer.save_path, 'plots')
+os.makedirs(save_path, exist_ok=True)
+
 # Plot the loss evolution
 window_size = 5
 windows = sliding_window_view(losses, window_shape=window_size)
@@ -60,7 +65,9 @@ plt.xlabel('step')
 plt.ylabel("average loss")
 plt.title("Evolution of loss")
 plt.legend()
-plt.savefig('loss_log-linear.png', bbox_inches="tight")
+
+filepath = os.path.join(save_path, 'loss_log-linear.png')
+plt.savefig(filepath, bbox_inches="tight")
 
 # loglog
 plt.figure()
@@ -72,7 +79,9 @@ plt.xlabel('step')
 plt.ylabel("average loss")
 plt.title("Evolution of loss")
 plt.legend()
-plt.savefig('loss_log-log.png', bbox_inches="tight")
+
+filepath = os.path.join(save_path, 'loss_log-log.png')
+plt.savefig(filepath, bbox_inches="tight")
 
 # generate one instance of simulated data to guide prior samples with
 
@@ -138,7 +147,11 @@ for idx in range(xts.shape[1]):
     plt.xlim(0, 1)
     plt.ylim(0, 1)
 
-plt.savefig('marginal_path_snapshots.png', bbox_inches="tight")
+filepath = os.path.join(save_path, 'marginal_path_snapshots.png')
+plt.savefig(filepath, bbox_inches="tight")
 
+# corner plot
 fig = corner(xx.cpu().numpy(), labels=["t0_1", "t0_2"], truths=np.array(true_t0))
-fig.savefig('corner_plot.png', bbox_inches="tight")
+
+filepath = os.path.join(save_path, 'corner_plot.png')
+fig.savefig(filepath, bbox_inches="tight")
