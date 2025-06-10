@@ -133,9 +133,10 @@ class BurstSimulator:
         """
         Returns true value of a given burst parameter. 
         """
-        true_value = self.model.get_parameter_dict().get(param, None)
-        if true_value == None:
+        true_value = self.model.get_parameter_dict().get(param, [])
+        if len(true_value) == 0:
             print("INVALID PARAMETER KEY GIVEN")
+            return
         return true_value
 
     def plot_burst(self):
