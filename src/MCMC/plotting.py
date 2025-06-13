@@ -24,20 +24,27 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
 
     Args:
     - N (int): Number of samples from posterior.
-    - simulated_counts (ndarray[int]): Ground truth lightcurve
-    - samples (ndarray): Parameter samples from posterior
-    - inf_params (list[str]): labels of inferred parameters (t0, skew, amp, rise)
-    - modelparams (dict): includes all parameters needed to simulate/model a lightcurve
+    - simulated_counts (ndarray[int]): Ground truth lightcurve.
+    - samples (ndarray): Samples from posterior distribution of ground truth lightcurve.
+    - inf_params (list[str]): Keys of inferred parameters (t0, skew, amp, rise).
+    - modelparams (dict): All parameters needed to simulate/model a lightcurve.
     """
+    # plot the data
     time = modelparams["time"]
     plt.plot(time, simulated_counts, 'k-', alpha=0.1, label="data")
 
-    for i in range(N):
+    for _ in range(N):
+
+        # draw random sample from posterior
         random_index = np.random.randint(low=0, high=len(samples))
         random_sample = samples[random_index]
+
+        # generate noise-free curve from random sample
         modelparams = update_modelparams(random_sample, inf_params, modelparams)
         model = Model(**modelparams).get_flux()
-        plt.plot(time, model, alpha=0.5, label=f"{'posterior samples' if i == 0 else ''}", color='gray')
+
+        # plot the sample
+        plt.plot(time, model, alpha=0.3)
 
     plt.title(f'{N} posterior samples')
     plt.legend()
