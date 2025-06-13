@@ -49,7 +49,7 @@ def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simu
     
     # likelihood of the observed counts under this model
     L = (
-        -1 * np.sum(np.log(model_counts)) 
+        -1 * np.sum(model_counts) 
         + np.sum(simulated_counts * np.log(model_counts)) 
         - np.sum([math.log(math.factorial(x)) for x in simulated_counts]) # Note x is simulated count and should always be integer
     )
