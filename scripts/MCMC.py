@@ -135,7 +135,7 @@ def plot_posterior_samples(N, simulated_counts, samples, modelparams):
     Overlay samples from posterior on simulated curve.
     """
     time = modelparams["time"]
-    plt.plot(time, simulated_counts, 'k-', alpha=0.3, label="data")
+    plt.plot(time, simulated_counts, 'k-', alpha=0.1, label="data")
 
     for i in range(N):
         random_index = np.random.randint(low=0, high=len(samples))
@@ -188,10 +188,11 @@ def main(nwalkers, burn_steps, steps, parallel):
     noise_free_model, simulated_counts = simulator.simulate_burst(return_model=True)
     
     plt.figure(figsize=(15, 5))
-    plt.subplot(131)
+    plt.subplot(121)
     simulator.plot_burst()
 
-    true_values = [simulator.get_true(key) for key in inf_params]
+    true_values = np.array([simulator.get_true(key) for key in inf_params])
+    true_values = true_values.flatten()
 
     modelparams = {
         'time' : time,
@@ -227,17 +228,16 @@ def main(nwalkers, burn_steps, steps, parallel):
     samples = sampler.get_chain(flat=True)
 
     # samples from posterior overlayed on true model
-    plt.subplot(132)
+    plt.subplot(122)
     N_samples = 100
     plot_posterior_samples(N_samples, simulated_counts, samples, modelparams)
 
     # corner plot (or histogram for 1D)
     var_names = gen_parameter_labels(inf_params, N)
     if ndim > 1:
-        plt.figure()
         fig = corner(samples, labels=var_names, truths=true_values)
     else:
-        plt.subplot(133)
+        plt.figure()
         plot_1d_hist(samples, true_values)
 
     plt.tight_layout()
