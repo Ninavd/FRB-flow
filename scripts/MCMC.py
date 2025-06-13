@@ -43,7 +43,7 @@ def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simu
     
     # extract parameters from theta to update model params
     modelparams = update_modelparams(theta, inf_params, modelparams)
-    
+
     # find noise-free flux
     model_counts = Model(**modelparams).get_flux()
     
@@ -85,7 +85,7 @@ class UniformPrior():
             return -np.log(x) - np.log(np.log(self.x_max) - np.log(self.x_min))
         
         else:
-            return 1
+            return 0
     
     def sample(self, num_samples):
         """
@@ -189,7 +189,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     
     # TODO: get via args
     N = 1
-    inf_params = ["t0", "skew"]
+    inf_params = ["t0", "skew", "amp"]
 
     amp  = [100.0 for _ in range(N)]
     t0   = np.sort(np.random.rand(N))
@@ -238,10 +238,10 @@ def main(nwalkers, burn_steps, steps, parallel):
     p0 = [prior_dict[key].sample(nwalkers) for key in inf_params]
     p0 = np.concatenate(p0, axis=1)
 
-    sampler  = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
 
     # burn-in
-    state      = sampler.run_mcmc(p0, burn_steps)
+    state = sampler.run_mcmc(p0, burn_steps)
     sampler.reset()
 
     # running the sampler
