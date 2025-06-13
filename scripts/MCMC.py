@@ -47,7 +47,7 @@ def main(nwalkers, burn_steps, steps, parallel):
 
     model     = Model(time, N, burstparams, ybkg)
     simulator = BurstSimulator(model)
-    noise_free_model, simulated_counts = simulator.simulate_burst(return_model=True)
+    simulated_counts = simulator.simulate_burst()
 
     true_values = np.array([simulator.get_true(key) for key in inf_params])
     true_values = true_values.flatten()
@@ -90,7 +90,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     samples = sampler.get_chain(flat=True)
 
     # plot the OG
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=(13, 5))
     plt.subplot(121)
     simulator.plot_burst()
 
@@ -98,6 +98,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     plt.subplot(122)
     N_samples = 100
     plot_posterior_samples(N_samples, simulated_counts, samples, inf_params, modelparams)
+    plt.tight_layout()
 
     # corner plot (or histogram for 1D)
     var_names = gen_parameter_labels(inf_params, N)
