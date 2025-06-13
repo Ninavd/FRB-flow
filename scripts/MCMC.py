@@ -18,7 +18,18 @@ from src.simulator import BurstSimulator, Model
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
-def log_likelihood(theta: Iterable[float], inf_params, modelparams, simulated_counts: Iterable[int]) -> float:
+def update_modelparams(sample, inf_params, modelparams):
+    """
+    Extract parameters from sample to update model parameters.
+    """
+    N = modelparams['ncomp']
+    for i, key in enumerate(inf_params):
+        start = i * N
+        stop  = start + N
+        modelparams['burstparams'][key] = sample[start:stop]
+    return modelparams
+
+def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simulated_counts: Iterable[int]) -> float:
     """
     $ln(p(x_{counts} | t0)$
     natural logarithm of poisson likelihood.
@@ -31,13 +42,8 @@ def log_likelihood(theta: Iterable[float], inf_params, modelparams, simulated_co
     """
     
     # extract parameters from theta to update model params
-    N = modelparams['ncomp']
-    for i, key in enumerate(inf_params):
-        start = i * N
-        stop  = start + N
-
-        modelparams['burstparams'][key] = theta[start:stop]
-
+    modelparams = update_modelparams(theta, inf_params, modelparams)
+    
     # find noise-free flux
     model_counts = Model(**modelparams).get_flux()
     
@@ -55,15 +61,19 @@ class UniformPrior():
     """
     Class for uniform prior.
     """
-    def __init__(self, x_min, x_max, log, enforce_order):
+    def __init__(self, x_min, x_max, log, enforce_order, dim):
         self.x_min = x_min
         self.x_max = x_max
         self.log = log
         self.enforce_order = enforce_order
+        self.dim = dim
 
     def log_prob(self, x):
-        # out of range
-        if x.any() < self.x_min or x.any() > self.x_max:
+        """
+        Return log probability of x.
+        """
+        # out of range 
+        if (x < self.x_min).any() or (x > self.x_max).any():
             return -np.inf
         
         # check if first value should be smaller than second etc. etc.
@@ -76,20 +86,28 @@ class UniformPrior():
         
         else:
             return 1
+    
+    def sample(self, num_samples):
+        """
+        Sample from uniform prior
+        """
+        shape = (num_samples, self.dim)
+        
+        if not self.log:
+            samples = np.random.uniform(self.x_min, self.x_max, size=shape) 
+        elif self.log:
+            samples = np.exp(np.random.uniform(np.log(self.x_min), np.log(self.x_max), size=shape))
+        
+        if self.enforce_order:
+            return np.sort(samples, axis=1)
+        
+        return samples
 
 def log_priors(theta, *args):
     """
     Find the value of the prior encompassing all the parameters.
     """
-    inf_params, modelparams, _ = args 
-
-    # TODO: make global var or add to args
-    prior_dict = {
-        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True),
-        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False),
-        "rise": UniformPrior(x_min=1e-4, x_max=0.1,  log=True, enforce_order=False),
-        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False)
-    }
+    inf_params, priors, modelparams, _ = args 
     
     N = modelparams['ncomp']
     log_prob = 0
@@ -98,7 +116,7 @@ def log_priors(theta, *args):
         stop  = start + N
 
         param = theta[start:stop]
-        prior = prior_dict[key]
+        prior = priors[key]
         log_prob += prior.log_prob(param)
 
         if log_prob == -np.inf:
@@ -106,14 +124,18 @@ def log_priors(theta, *args):
     
     return log_prob
 
-def log_prob(theta: Iterable[float], *args) -> float:
+def log_posterior(theta: Iterable[float], *args) -> float:
     """
     Log of the posterior distribution.
     """
-    log_priors(theta, *args)
+    log_prior_value = log_priors(theta, *args)
+
+    # check if samples are valid via prior
+    if log_prior_value == -np.inf:
+        return -np.inf
     
-    # otherwise its equal to the likelihood
-    return log_likelihood(theta, *args)
+    # if so, it's safe to find the likelihood
+    return log_prior_value + log_likelihood(theta, *args)
 
 
 def plot_1d_hist(samples, true_value):
@@ -130,7 +152,7 @@ def plot_1d_hist(samples, true_value):
 
     plt.legend()
 
-def plot_posterior_samples(N, simulated_counts, samples, modelparams):
+def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams):
     """
     Overlay samples from posterior on simulated curve.
     """
@@ -140,7 +162,7 @@ def plot_posterior_samples(N, simulated_counts, samples, modelparams):
     for i in range(N):
         random_index = np.random.randint(low=0, high=len(samples))
         random_sample = samples[random_index]
-        modelparams['burstparams']['t0'] = random_sample
+        modelparams = update_modelparams(random_sample, inf_params, modelparams)
         model = Model(**modelparams).get_flux()
         plt.plot(time, model, alpha=0.5, label=f"{'posterior samples' if i == 0 else ''}", color='gray')
 
@@ -166,8 +188,8 @@ def main(nwalkers, burn_steps, steps, parallel):
     time = np.linspace(0, 1.0, 1000)
     
     # TODO: get via args
-    N = 2
-    inf_params = ["t0"]
+    N = 1
+    inf_params = ["t0", "skew"]
 
     amp  = [100.0 for _ in range(N)]
     t0   = np.sort(np.random.rand(N))
@@ -201,17 +223,22 @@ def main(nwalkers, burn_steps, steps, parallel):
         'ybkg': ybkg
     }
 
+    # define the priors
+    # TODO: make global var or add to args
+    prior_dict = {
+        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
+        "amp" : UniformPrior(x_min=10,   x_max=300, log=False,  enforce_order=False, dim=N),
+        "rise": UniformPrior(x_min=1e-4, x_max=0.1,  log=True, enforce_order=False, dim=N),
+        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
+    }
+
     # https://emcee.readthedocs.io/en/stable/tutorials/quickstart/
     pool = Pool() if parallel else None
     ndim = len(inf_params) * N
-    p0       = np.random.rand(nwalkers, ndim) # initial position of the walkers TODO: p0 must obey the respective priors
-    
-    # enforce order if peaktime is included in inference params
-    if "t0" in inf_params:
-        idx = inf_params.index("t0")
-        p0[:, idx * N: idx * N + N] = np.sort(np.random.rand(nwalkers, ndim), axis=1)
+    p0 = [prior_dict[key].sample(nwalkers) for key in inf_params]
+    p0 = np.concatenate(p0, axis=1)
 
-    sampler  = emcee.EnsembleSampler(nwalkers, ndim, log_prob, args=[inf_params, modelparams, simulated_counts], pool=pool)
+    sampler  = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
 
     # burn-in
     state      = sampler.run_mcmc(p0, burn_steps)
@@ -230,7 +257,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     # samples from posterior overlayed on true model
     plt.subplot(122)
     N_samples = 100
-    plot_posterior_samples(N_samples, simulated_counts, samples, modelparams)
+    plot_posterior_samples(N_samples, simulated_counts, samples, inf_params, modelparams)
 
     # corner plot (or histogram for 1D)
     var_names = gen_parameter_labels(inf_params, N)
