@@ -4,6 +4,13 @@ import torch.nn as nn
 from typing import List, Type
 import torch 
 
+def choose_device():
+    # choose and state device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.backends.mps.is_available():
+        device = torch.device('mps')
+    return device
+
 def model_size_b(model: nn.Module) -> int:
     """
     Returns model size in bytes. Based on https://discuss.pytorch.org/t/finding-model-size/130275/2
