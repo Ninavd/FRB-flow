@@ -28,10 +28,10 @@ def main(nwalkers, burn_steps, steps, parallel):
     time = np.linspace(0, 1.0, 1000)
     
     # TODO: get via args
-    N = 3
-    inf_params = ["t0", "skew"]
+    N = 1
+    inf_params = ["t0", "skew", "rise", "amp"]
 
-    amp  = [20.0 for _ in range(N)]
+    amp  = [100.0 for _ in range(N)]
     t0   = np.sort(np.random.rand(N))
     rise = [0.03 for _ in range(N)]
     skew = [5.0 for _ in range(N)]
@@ -42,7 +42,7 @@ def main(nwalkers, burn_steps, steps, parallel):
         'rise' : rise,
         'skew' : skew
         }
-    print(f"Doing inference on a burst with {N} components and burstparams: {burstparams}")
+    print(f"Doing inference on a burst with {N} component(s) and burstparams: {burstparams}")
     ybkg = 5.0
 
     model     = Model(time, N, burstparams, ybkg)
@@ -63,7 +63,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     prior_dict = {
         "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
         "amp" : UniformPrior(x_min=10,   x_max=300, log=False,  enforce_order=False, dim=N),
-        "rise": UniformPrior(x_min=1e-4, x_max=0.1,  log=True, enforce_order=False, dim=N),
+        "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
     }
 
@@ -75,8 +75,20 @@ def main(nwalkers, burn_steps, steps, parallel):
 
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
 
-    # burn-in
-    state = sampler.run_mcmc(p0, burn_steps)
+    # short run to determine best initial position
+    state = sampler.run_mcmc(p0, 200)
+    sampler.reset()
+
+    # correct walkers with low likelihood (otherwise likely to get stuck)
+    rounded_probs = 1000 * np.floor(state.log_prob / 1000)
+    low_prob_mask = state.log_prob < np.max(rounded_probs)
+
+    variations      = np.ones((sum(low_prob_mask), N)) * np.random.uniform(low=0.9, high=1.1, size=(sum(low_prob_mask), N))
+    most_likely_pos = state.coords[np.argmax(state.log_prob)]
+    state.coords[low_prob_mask] = most_likely_pos * variations
+
+    # burn-in with repositioned walkers 
+    state = sampler.run_mcmc(state, burn_steps)
     sampler.reset()
 
     # running the sampler
