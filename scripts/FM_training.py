@@ -11,7 +11,7 @@ from src.flow_matching.distributions import Prior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.integration import EulerODESolver
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, fourier_embedding
 from src.helpers import record_every
 
 import numpy as np
@@ -112,7 +112,9 @@ def main(model: str, encoder: str, epochs: int, batch_size: int,
         time_seq_encoder = None
 
     if model == "MLP":
-        vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], y_dim=latent_dim, time_seq_encoder=time_seq_encoder)
+        vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
+                                            time_seq_encoder=time_seq_encoder, tau_encoder=fourier_embedding, combine="concat"
+                                            )
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
     losses = trainer.train(epochs, device, lr, save_checkpoint=False if no_save else True, batch_size=batch_size)

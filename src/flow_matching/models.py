@@ -5,7 +5,7 @@ from src.flow_matching.helpers import build_mlp
 
 class MLPVectorField(nn.Module):
     """
-    MLP-parameterization of the learned vector field u_t^theta(x)
+    MLP-parameterization of the learned vector field u_t^phi(x)
     """
     def __init__(self, dim: int, hiddens: List[int]):
         """
@@ -22,49 +22,79 @@ class MLPVectorField(nn.Module):
         Args:
         - x: (bs, dim)
         Returns:
-        - u_t^theta(x): (bs, dim)
+        - u_t^phi(x): (bs, dim)
         """
         xt = torch.cat([x,t], dim=-1)
         return self.net(xt)
 
 class MLPGuidedVectorField(nn.Module):
     """
-    MLP-parameterization of the learned vector field u_t^theta(x | y)
+    MLP-parameterization of the learned vector field u_t^phi(x | y)
     """
-    def __init__(self, dim: int, hiddens: List[int], y_dim: int = 1000, time_seq_encoder: nn.Module | None = None):
+    def __init__(self, dim: int, hiddens: List[int], time_dim: int = 1000, 
+                 time_seq_encoder: nn.Module | None = None, tau_encoder=None, theta_encoder=None, combine="concat"):
         """
         Args:
         - dim: number of parameters
         - hiddens: list of hidden layer sizes
-        - y_dim: length of light curve
+        - time_dim: (latent) length of light curve
+
+        embedding -> concat, add or GLU
         """
         super().__init__()
         self.dim   = dim
-        self.y_dim = y_dim # length of lightcurve
+        self.time_dim = time_dim # length of lightcurve
         self.hiddens = hiddens
-        self.time_seq_encoder = time_seq_encoder
 
-        # input size is parameter dimension + time value + length of light curve (condition dimension)
-        input_size = dim + 1 + self.y_dim 
+        self.time_seq_encoder = time_seq_encoder
+        self.tau_encoder = tau_encoder
+        self.tau_dim = time_dim if tau_encoder else 1
+        self.theta_dim = time_dim # if theta_encoder else 1 # TODO: uncomment this later
+        self.theta_encoder = build_mlp([dim] + hiddens + [self.theta_dim]) # NOTE: temporary solution
         
+        self.combine = combine 
+
         # output size is parameter dimension
         output_size = dim 
 
-        self.net = build_mlp([input_size] + hiddens + [output_size])
+        if combine == "concat":
+            input_size = self.theta_dim + self.tau_dim + self.time_dim 
+            self.net = build_mlp([input_size] + hiddens + [output_size]) 
+        elif combine == "GLU":
+            self.net = GLUInjectedMLP(input_dim=self.time_dim, cond_dim=self.theta_dim + time_dim, hiddens=hiddens, output_dim=dim)
+        elif combine == "add":
+            raise NotImplementedError()
+        else:
+            raise ValueError("INCORRECT COMBINATION METHOD. MUST BE [concat, add, GLU]")            
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y: torch.Tensor):
+    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor):
         """
         Args:
         - x: (bs, dim) 
-        - t: (bs, 1)
-        - y: (bs, y_dim) [the condition tensor]
+        -tau: (bs, 1)
+        - y: (bs, time_dim) [the condition tensor]
         Returns:
-        - u_t^theta(x): (bs, dim)
+        - u_t^phi(x): (bs, dim)
         """
+        # do encodings
         if self.time_seq_encoder is not None:
             y = self.time_seq_encoder(y)
-        xt = torch.cat([x, t, y], dim=-1)
-        return self.net(xt)
+        if self.tau_encoder is not None:
+           tau = self.tau_encoder(tau, self.time_dim)
+        if self.theta_encoder:
+            x = self.theta_encoder(x)
+        
+        # put (combinations of) encodings through network
+        if self.combine == "concat":
+            x_tau = torch.cat([x, tau, y], dim=-1) 
+            return self.net(x_tau)
+        
+        elif self.combine == "GLU":
+            cond = torch.cat([x, tau], dim=-1)
+            return self.net(y, cond)
+        
+        elif self.combine == "add":
+            raise NotImplementedError()
     
     def get_config(self):
         """
@@ -76,10 +106,44 @@ class MLPGuidedVectorField(nn.Module):
             {
                 "dim":self.dim,
                 "hiddens": self.hiddens,
-                "y_dim":self.y_dim
+                "time_dim":self.time_dim,
+                "combine":self.combine
             }
         }
         return config
+
+class GLUInjectLayer(nn.Module):
+    def __init__(self, input_dim, cond_dim, hidden_dim=None):
+        super().__init__()
+
+        hidden_dim = hidden_dim or input_dim
+        self.activation = nn.SiLU()
+        self.x_proj = nn.Linear(input_dim, hidden_dim)
+        self.gate_proj = nn.Linear(cond_dim, hidden_dim)
+
+    def forward(self, x, cond):
+        x_proj = self.activation(self.x_proj(x))  
+        gate = torch.sigmoid(self.gate_proj(cond))  
+        return x_proj * gate  
+
+class GLUInjectedMLP(nn.Module):
+    def __init__(self, input_dim, cond_dim, hiddens: List[int], output_dim):
+        super().__init__()
+
+        self.input_proj = nn.Linear(input_dim, hiddens[0])
+
+        self.layers = nn.ModuleList([
+            GLUInjectLayer(hidden_dim, cond_dim, hiddens[i+1])
+            for i, hidden_dim in enumerate(hiddens[:-1])
+        ])
+
+        self.output_proj = nn.Linear(hiddens[-1], output_dim)
+
+    def forward(self, x, cond):
+        x = self.input_proj(x)
+        for layer in self.layers:
+            x = layer(x, cond)  # GLU + conditioning at each layer
+        return self.output_proj(x)
 
 class FRBLightCurveCNN(nn.Module):
     """
@@ -141,7 +205,6 @@ class FRBLightCurveCNN(nn.Module):
         }
         return config
 
-
 class LightCurveThinner(nn.Module):
     """
     Simple 'encoder' for time series.
@@ -168,12 +231,22 @@ class LightCurveThinner(nn.Module):
             }
         }
         return config
-        
+    
+def fourier_embedding(tau, latent_dim):
+    # log-spaced frequencies
+    freqs = torch.logspace(0, 3, latent_dim // 2)
+    freqs = freqs.to(tau.device)
+
+    tau = tau.view(-1, 1)  # shape: (batch_size, 1)
+    scaled = tau * freqs
+    return torch.cat([torch.sin(scaled), torch.cos(scaled)], dim=-1)
+
+
 if __name__=="__main__":
     import numpy as np
-    encoder = FRBLightCurveCNN()
-    x = torch.linspace(0, 1, 10000)
-    x_batch = x.repeat(10, 1)
-    print(x_batch.shape)
-    result = encoder(x_batch)
+    # encoder = FRBLightCurveCNN()
+    t = torch.linspace(0, 1, 1)
+    t_batch = t.repeat(10, 1)
+    print(t_batch.shape)
+    result = fourier_embedding(t_batch, 128)
     print(result, result.shape)
