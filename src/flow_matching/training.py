@@ -29,23 +29,24 @@ class Trainer(ABC):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
     def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, save_checkpoint=True, batch_size: int = 256, **kwargs) -> torch.Tensor:
-        # Report model size
+        # report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
         
-        # Initialize
+        # initialize
         self.path.to(device)
         self.model.to(device)
         opt = self.get_optimizer(lr)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, num_epochs, eta_min=1e-6)
         self.model.train()
         losses = np.zeros(num_epochs)
 
-        # if save_checkpoint=true, create run folder and save settings
+        # (optional) create run folder and save settings
         if save_checkpoint:
             self.save_path = create_run_folder(path="../checkpoints")
             self.save_config_file(num_epochs, lr, batch_size, self.save_path)
         
-        # Train loop
+        # train loop
         progress_bar = tqdm(range(num_epochs))
         for epoch in progress_bar:
             opt.zero_grad()
@@ -55,12 +56,13 @@ class Trainer(ABC):
             loss.backward()
 
             opt.step()
+            lr_scheduler.step()
 
             # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
                 self.save_checkpoint(epoch, opt, losses)
 
-            progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}')
+            progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}, lr: {lr_scheduler.get_last_lr()[0]:.2e}')
 
         # Finish
         self.model.eval()
