@@ -88,14 +88,16 @@ class Trainer(ABC):
         """
         Save yaml with training and model settings
         """
-        if self.model.time_seq_encoder is None:
-            t_encoder_config = None 
-        else:
+        try:
             t_encoder_config = self.model.time_seq_encoder.get_config()
-        
+        except AttributeError:
+            t_encoder_config = False
+
         config = {
             "model"           : self.model.get_config(),
             "time_seq_encoder": t_encoder_config,
+            "theta_encoder"   : True if self.model.theta_encoder else False,
+            "tau_encoder"     : True if self.model.tau_encoder else False,
             "training":
             {
                 "num_epochs"   : num_epochs,
