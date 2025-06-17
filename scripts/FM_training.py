@@ -19,7 +19,7 @@ from matplotlib import pyplot as plt
 import torch
 
 from src.flow_matching.plotting import plot_loss, plot_snapshots
-from src.flow_matching.helpers import choose_device
+from src.flow_matching.helpers import choose_device, build_mlp
 
 def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path, show_plots, 
                      loss=True, snapshots=True, corner_plot=True
@@ -109,11 +109,15 @@ def main(model: str, encoder: str, epochs: int, batch_size: int,
         latent_dim = 100
         time_seq_encoder = LightCurveThinner(latent_dim=100)
     else:
+        latent_dim = 1000
         time_seq_encoder = None
+
+    dim = 2
+    theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
 
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
-                                            time_seq_encoder=time_seq_encoder, tau_encoder=fourier_embedding, combine="concat"
+                                            time_seq_encoder=time_seq_encoder, tau_encoder=fourier_embedding, theta_encoder=theta_encoder, combine="GLU"
                                             )
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)

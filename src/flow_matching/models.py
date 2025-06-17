@@ -43,27 +43,33 @@ class MLPGuidedVectorField(nn.Module):
         """
         super().__init__()
         self.dim   = dim
-        self.time_dim = time_dim # length of lightcurve
-        self.hiddens = hiddens
 
-        self.time_seq_encoder = time_seq_encoder
-        self.tau_encoder = tau_encoder
-        self.tau_dim = time_dim if tau_encoder else 1
-        self.theta_dim = time_dim # if theta_encoder else 1 # TODO: uncomment this later
-        self.theta_encoder = build_mlp([dim] + hiddens + [self.theta_dim]) # NOTE: temporary solution
+        # encoding dimensions
+        self.time_dim  = time_dim # length of (encoded) lightcurve
+        self.tau_dim   = time_dim // 2 if tau_encoder else 1
+        self.theta_dim = time_dim // 2 if theta_encoder else dim 
+
+        # encoders
+        self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x : x
+        self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _ : x
+        self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x : x 
         
         self.combine = combine 
 
         # output size is parameter dimension
         output_size = dim 
+        self.hiddens = hiddens
 
         if combine == "concat":
             input_size = self.theta_dim + self.tau_dim + self.time_dim 
             self.net = build_mlp([input_size] + hiddens + [output_size]) 
+
         elif combine == "GLU":
-            self.net = GLUInjectedMLP(input_dim=self.time_dim, cond_dim=self.theta_dim + time_dim, hiddens=hiddens, output_dim=dim)
+            self.net = GLUInjectedMLP(input_dim=self.time_dim, cond_dim=self.theta_dim + self.tau_dim, hiddens=hiddens, output_dim=dim)
+
         elif combine == "add":
             raise NotImplementedError()
+        
         else:
             raise ValueError("INCORRECT COMBINATION METHOD. MUST BE [concat, add, GLU]")            
 
@@ -77,21 +83,20 @@ class MLPGuidedVectorField(nn.Module):
         - u_t^phi(x): (bs, dim)
         """
         # do encodings
-        if self.time_seq_encoder is not None:
-            y = self.time_seq_encoder(y)
-        if self.tau_encoder is not None:
-           tau = self.tau_encoder(tau, self.time_dim)
-        if self.theta_encoder:
-            x = self.theta_encoder(x)
+        y   = self.time_seq_encoder(y)
+        tau = self.tau_encoder(tau, self.tau_dim)
+        x   = self.theta_encoder(x)
         
+        # define the condition vector
+        condition = torch.cat([x, tau], dim=-1)
+
         # put (combinations of) encodings through network
         if self.combine == "concat":
-            x_tau = torch.cat([x, tau, y], dim=-1) 
+            x_tau = torch.cat([condition, y], dim=-1) 
             return self.net(x_tau)
         
         elif self.combine == "GLU":
-            cond = torch.cat([x, tau], dim=-1)
-            return self.net(y, cond)
+            return self.net(y, condition)
         
         elif self.combine == "add":
             raise NotImplementedError()
