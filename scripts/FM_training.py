@@ -154,7 +154,7 @@ if __name__=="__main__":
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
  
-    parser.add_argument("--combine_mode", type=str, help="how to combine the vectors [GLU or concat]")
+    parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [GLU or concat]")
 
     parser.add_argument("-e","--epochs", type=int, default=100_000, help="epochs")
     parser.add_argument("-b","--batch_size", type=int, default=512, help="batch size")
