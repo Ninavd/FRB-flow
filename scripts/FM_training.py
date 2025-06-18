@@ -86,8 +86,9 @@ def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path
 
         plt.show() if show_plots else None
 
-def main(model: str, encoder: str, epochs: int, batch_size: int, 
-         lr: float, num_samples:int, show_plots: bool, no_save: bool
+def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, 
+         epochs: int, batch_size: int, lr: float, num_samples:int, 
+         show_plots: bool, no_save: bool
          ):
     """
     Train and evaluate flow matching model.
@@ -113,11 +114,18 @@ def main(model: str, encoder: str, epochs: int, batch_size: int,
         time_seq_encoder = None
 
     dim = 2
-    theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
+
+    tau_encoder = None
+    if encode_tau:
+        tau_encoder=fourier_embedding
+
+    theta_encoder = None
+    if encode_theta:
+        theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
 
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
-                                            time_seq_encoder=time_seq_encoder, tau_encoder=fourier_embedding, theta_encoder=theta_encoder, combine="GLU"
+                                            time_seq_encoder=time_seq_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder, combine="GLU"
                                             )
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
@@ -140,10 +148,15 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
 
     parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train")
+
     parser.add_argument("-c", "--encoder", type=str, default="CNN", help="Time series encoder (CNN or THIN or NULL)")
+    parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
+    parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
+ 
     parser.add_argument("-e","--epochs", type=int, default=100_000, help="epochs")
     parser.add_argument("-b","--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("-l", "--lr", type=float, default=5e-4, help="learning rate")
+
     parser.add_argument("-s", "--num_samples", type=int, default=20_000, help="Number of samples used to construct final posterior")
     parser.add_argument("--show_plots", action="store_true", help="show evaluation plots in interactive window")
     parser.add_argument("--no_save", action="store_true", help="Do not save training checkpoints and plots (not recommended for long runs)")
@@ -159,4 +172,6 @@ if __name__=="__main__":
     elif args.encoder not in valid_encoders:
         print(f"encoder argument invalid, must be in {valid_models}")
     else:
-        main(args.model, args.encoder, args.epochs, args.batch_size, args.lr, args.num_samples, args.show_plots, args.no_save)
+        main(
+            args.model, args.encoder, args.encode_tau, args.encode_theta,
+            args.epochs, args.batch_size, args.lr, args.num_samples, args.show_plots, args.no_save)
