@@ -37,7 +37,7 @@ class Trainer(ABC):
         self.path.to(device)
         self.model.to(device)
         opt = self.get_optimizer(lr)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, num_epochs, eta_min=1e-6)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, (0.9 * num_epochs), eta_min=1e-6)
         self.model.train()
         losses = np.zeros(num_epochs)
 

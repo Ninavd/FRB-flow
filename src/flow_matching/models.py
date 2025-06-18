@@ -243,8 +243,8 @@ def fourier_embedding(tau, latent_dim):
     freqs = freqs.to(tau.device)
 
     tau = tau.view(-1, 1)  # shape: (batch_size, 1)
-    scaled = tau * freqs
-    return torch.cat([torch.sin(scaled), torch.cos(scaled)], dim=-1)
+    wt = tau * freqs
+    return torch.cat([torch.sin(wt), torch.cos(wt)], dim=-1)
 
 
 if __name__=="__main__":
