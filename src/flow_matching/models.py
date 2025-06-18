@@ -49,6 +49,11 @@ class MLPGuidedVectorField(nn.Module):
         self.tau_dim   = time_dim // 2 if tau_encoder else 1
         self.theta_dim = time_dim // 2 if theta_encoder else dim 
 
+        # encoders boolean (for config)
+        self.encode_time_seq = True if time_seq_encoder else False
+        self.encode_tau      = True if tau_encoder else False 
+        self.encode_theta    = True if theta_encoder else False 
+
         # encoders
         self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x : x
         self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _ : x

@@ -96,8 +96,8 @@ class Trainer(ABC):
         config = {
             "model"           : self.model.get_config(),
             "time_seq_encoder": t_encoder_config,
-            "theta_encoder"   : True if self.model.theta_encoder else False,
-            "tau_encoder"     : True if self.model.tau_encoder else False,
+            "theta_encoder"   : self.model.encode_theta,
+            "tau_encoder"     : self.model.encode_tau,
             "training":
             {
                 "num_epochs"   : num_epochs,
