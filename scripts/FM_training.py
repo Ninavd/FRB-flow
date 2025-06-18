@@ -88,7 +88,7 @@ def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path
 
 def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
          epochs: int, batch_size: int, lr: float, num_samples:int, 
-         show_plots: bool, no_save: bool
+         show_plots: bool, no_save: bool, job_id: int | None
          ):
     """
     Train and evaluate flow matching model.
@@ -130,7 +130,7 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
                                             )
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
-    losses = trainer.train(epochs, device, lr, save_checkpoint=False if no_save else True, batch_size=batch_size)
+    losses = trainer.train(epochs, device, lr, False if no_save else True, batch_size, job_id)
 
     print('\n')
 
@@ -164,6 +164,8 @@ if __name__=="__main__":
     parser.add_argument("--show_plots", action="store_true", help="show evaluation plots in interactive window")
     parser.add_argument("--no_save", action="store_true", help="Do not save training checkpoints and plots (not recommended for long runs)")
 
+    parser.add_argument("-j", "--job_id", type=int, default=None, help="job id when running on cluster (slurm)")
+
     args = parser.parse_args()
 
     valid_models = ["MLP"]
@@ -180,4 +182,4 @@ if __name__=="__main__":
     else:
         main(
             args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode,
-            args.epochs, args.batch_size, args.lr, args.num_samples, args.show_plots, args.no_save)
+            args.epochs, args.batch_size, args.lr, args.num_samples, args.show_plots, args.no_save, args.job_id)

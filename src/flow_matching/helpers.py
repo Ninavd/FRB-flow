@@ -54,7 +54,7 @@ def load_model(model, path):
     # NOTE: set model to evaluation mode if you dont train  it further
     return model, losses
 
-def create_run_folder(path):
+def create_run_folder(path, job_id):
     """
     Creates folder in path to save training checkpoints and config file.
     """
@@ -65,6 +65,7 @@ def create_run_folder(path):
     # generate foldername w timestamp
     timestamp = datetime.now().strftime("%d_%m_%H%M")
     folder_name = "run_" + timestamp
+    folder_name += f"_{job_id}" if job_id else ""
     full_path = path + '/' + folder_name
 
     # create run folder

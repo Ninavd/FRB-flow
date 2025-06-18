@@ -28,7 +28,7 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, save_checkpoint=True, batch_size: int = 256, **kwargs) -> torch.Tensor:
+    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
         # report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -43,7 +43,7 @@ class Trainer(ABC):
 
         # (optional) create run folder and save settings
         if save_checkpoint:
-            self.save_path = create_run_folder(path="../checkpoints")
+            self.save_path = create_run_folder("../checkpoints", job_id)
             self.save_config_file(num_epochs, lr, batch_size, self.save_path)
         
         # train loop
