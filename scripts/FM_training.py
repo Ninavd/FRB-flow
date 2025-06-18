@@ -86,7 +86,7 @@ def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path
 
         plt.show() if show_plots else None
 
-def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, 
+def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
          epochs: int, batch_size: int, lr: float, num_samples:int, 
          show_plots: bool, no_save: bool
          ):
@@ -125,7 +125,8 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool,
 
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
-                                            time_seq_encoder=time_seq_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder, combine="GLU"
+                                            time_seq_encoder=time_seq_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder, 
+                                            combine=combine_mode
                                             )
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
@@ -153,6 +154,8 @@ if __name__=="__main__":
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
  
+    parser.add_argument("--combine_mode", type=str, help="how to combine the vectors [GLU or concat]")
+
     parser.add_argument("-e","--epochs", type=int, default=100_000, help="epochs")
     parser.add_argument("-b","--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("-l", "--lr", type=float, default=5e-4, help="learning rate")
@@ -165,13 +168,16 @@ if __name__=="__main__":
 
     valid_models = ["MLP"]
     valid_encoders = ["CNN", "THIN", "NULL"]
+    valid_combine_modes = ["GLU", "concat"]
 
     # check correctness of args
     if args.model not in valid_models:
         print(f"model argument invalid, must be in {valid_models}")
     elif args.encoder not in valid_encoders:
-        print(f"encoder argument invalid, must be in {valid_models}")
+        print(f"encoder argument invalid, must be in {valid_encoders}")
+    elif args.combine_mode not in valid_combine_modes:
+        print(f"Combine mode argument invalid, must be in {valid_combine_modes}")
     else:
         main(
-            args.model, args.encoder, args.encode_tau, args.encode_theta,
+            args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode,
             args.epochs, args.batch_size, args.lr, args.num_samples, args.show_plots, args.no_save)
