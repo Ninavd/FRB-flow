@@ -119,11 +119,16 @@ class ConditionalFlowMatchingTrainer(Trainer):
         super().__init__(model, **kwargs)
         self.path = path
 
-    def get_train_loss(self, batch_size: int) -> torch.Tensor:
+    def get_train_loss(self, device, batch_size: int) -> torch.Tensor:
         # samples
         z_batch = self.path.p_data.sample(batch_size) # z ~ p_data
         t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
         x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
+
+        # put data on the doomsday device
+        z_batch = z_batch.to(device)
+        t_batch = t_batch.to(device)
+        x_batch = x_batch.to(device)
 
         # we take a monte carlo estimate of the loss:
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
