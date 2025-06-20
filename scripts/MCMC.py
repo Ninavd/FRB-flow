@@ -11,9 +11,10 @@ from multiprocessing import Pool
 from corner import corner 
 
 from src.simulator import BurstSimulator, Model
+from src.helpers import plot_posterior_samples
 
 from src.MCMC.helpers import gen_parameter_labels
-from src.MCMC.plotting import plot_1d_hist, plot_posterior_samples
+from src.MCMC.plotting import plot_1d_hist
 from src.MCMC.posterior import log_posterior
 from src.MCMC.priors import UniformPrior
 
