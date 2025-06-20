@@ -54,6 +54,15 @@ def load_model(model, path):
     # NOTE: set model to evaluation mode if you dont train  it further
     return model, losses
 
+def find_run_dir(job_id:str, save_dir: str) -> str | None:
+    """
+    Returns path to folder where run was saved.
+    """
+    for dir_name in os.listdir(save_dir):
+        if job_id in dir_name:
+            return os.path.join(save_dir, dir_name)
+    return None
+
 def create_run_folder(path, job_id):
     """
     Creates folder in path to save training checkpoints and config file.
