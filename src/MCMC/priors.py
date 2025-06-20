@@ -25,7 +25,8 @@ class UniformPrior():
         
         # log uniform 
         if self.log:
-            return -np.log(x) - np.log(np.log(self.x_max) - np.log(self.x_min))
+            L = -np.log(x) - np.log(np.log(self.x_max) - np.log(self.x_min))
+            return np.sum(L)
         
         else:
             return 0
