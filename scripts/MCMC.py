@@ -84,7 +84,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     rounded_probs = 1000 * np.floor(state.log_prob / 1000)
     low_prob_mask = state.log_prob < np.max(rounded_probs)
 
-    variations      = np.ones((sum(low_prob_mask), N)) * np.random.uniform(low=0.9, high=1.1, size=(sum(low_prob_mask), N))
+    variations      = np.ones((sum(low_prob_mask), ndim)) * np.random.uniform(low=0.9, high=1.1, size=(sum(low_prob_mask), ndim))
     most_likely_pos = state.coords[np.argmax(state.log_prob)]
     state.coords[low_prob_mask] = most_likely_pos * variations
 
