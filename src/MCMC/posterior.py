@@ -1,10 +1,9 @@
 import numpy as np
-import math
 
 from typing import Iterable
 
 from src.simulator import Model
-from src.MCMC.helpers import update_modelparams
+from src.helpers import update_modelparams
 
 def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simulated_counts: Iterable[int]) -> float:
     """
