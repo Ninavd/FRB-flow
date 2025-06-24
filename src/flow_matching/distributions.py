@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 import torch
 import torch.distributions as D
 
-from src.simulator import Model, BurstSimulator
+from src.flow_matching.simulator import Model
 
 class Sampleable(ABC):
     """
@@ -133,9 +133,9 @@ class NewPosterior(Sampleable):
             )
         
         # simulate noisy light curve
-        simulator = BurstSimulator(model)
-        x_counts = simulator.simulate_burst()
-        x_counts = torch.from_numpy(x_counts)
+        model = model.get_flux()
+        model = model.to('cuda') if torch.cuda.is_available() else model
+        x_counts = torch.poisson(model)
 
         return torch.Tensor(x_counts)
     
@@ -152,7 +152,6 @@ class NewPosterior(Sampleable):
         
         return burstparams
 
-
 # Samplelable posterior needs to sample prior and generate simulated data. 
 class Posterior(Sampleable):
 
@@ -165,20 +164,20 @@ class Posterior(Sampleable):
 
         # fixed burst parameters
         self.N = 2
-        self.time = np.linspace(0, 1.0, 1000)
+        self.time = torch.linspace(0, 1.0, 1000)
         self.ybkg = 5.0
         
         # fixed component parameters
-        amp  = 25.0
+        amp  = 100.0
         rise = 0.03
         skew = 5
         
         # parameters of each burst component
         self.burstparams = {
             't0'   : [None, None], # to be sampled from prior
-            'amp'  : [amp, amp],
-            'rise' : [rise, rise],
-            'skew' : [skew, skew]
+            'amp'  : torch.Tensor([amp, amp]),
+            'rise' : torch.Tensor([rise, rise]),
+            'skew' : torch.Tensor([skew, skew])
         }
     
     def sample(self, num_samples: int, prior=Prior()) -> Tuple[torch.Tensor]:
@@ -191,22 +190,10 @@ class Posterior(Sampleable):
         """
         # t0 samples 
         prior_samples = prior.sample((num_samples))
-
         burstparams = self.burstparams
-        simulation_time_resolution = 1000
-        simulations = torch.zeros((num_samples, simulation_time_resolution))
-
-        # TODO: find a cleaner way to do this
-        # sample simulated data from prior samples
-        for idx in range(num_samples):
-            
-            # samples new peaktimes
-            prior_sample = prior_samples[idx]
-            burstparams['t0'] = list(prior_sample.cpu().numpy())
-
-            # simulate with new params and save to array
-            simulated_lightcurve = self.light_curve_sample(burstparams=burstparams)
-            simulations[idx, :] = simulated_lightcurve
+        
+        burstparams['t0'] = prior_samples
+        simulations = self.light_curve_sample(burstparams=burstparams)
 
         return prior_samples, simulations
     
@@ -218,11 +205,11 @@ class Posterior(Sampleable):
         model = Model(time=self.time, ncomp=self.N, ybkg=self.ybkg, **kwargs)
         
         # simulate noisy light curve
-        simulator = BurstSimulator(model)
-        x_counts = simulator.simulate_burst()
-        x_counts = torch.Tensor(x_counts)
+        model = model.get_flux()
+        model = model.to('cuda') if torch.cuda.is_available() else model
+        simulated_counts = torch.poisson(model)
 
-        return torch.Tensor(x_counts)
+        return simulated_counts
 
 class Gaussian(torch.nn.Module, Sampleable):
     """
