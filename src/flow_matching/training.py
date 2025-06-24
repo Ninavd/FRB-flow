@@ -36,8 +36,11 @@ class Trainer(ABC):
         # initialize
         self.path.to(device)
         self.model.to(device)
+
         opt = self.get_optimizer(lr)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, (0.9 * num_epochs), eta_min=1e-6)
+        lr_cutoff = int(0.9 * num_epochs)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, lr_cutoff, eta_min=1e-6)
+        
         self.model.train()
         losses = np.zeros(num_epochs)
 
@@ -56,7 +59,7 @@ class Trainer(ABC):
             loss.backward()
 
             opt.step()
-            lr_scheduler.step()
+            lr_scheduler.step() if epoch < lr_cutoff else None
 
             # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
