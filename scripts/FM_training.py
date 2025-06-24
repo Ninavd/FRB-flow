@@ -34,7 +34,7 @@ def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path
     if snapshots or corner_plot:
         N = 2
         time = np.linspace(0, 1.0, 1000)
-        amp  = 25.0
+        amp  = 100.0
         rise = 0.03
         skew = 5
         ybkg = 5.0
