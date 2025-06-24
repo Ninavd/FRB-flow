@@ -88,6 +88,8 @@ def main(nwalkers, burn_steps, steps, parallel):
     most_likely_pos = state.coords[np.argmax(state.log_prob)]
     state.coords[low_prob_mask] = most_likely_pos * variations
 
+    print(f"Repositioned {sum(low_prob_mask)} of {nwalkers} walkers")
+    
     # burn-in with repositioned walkers 
     state = sampler.run_mcmc(state, burn_steps)
     sampler.reset()
