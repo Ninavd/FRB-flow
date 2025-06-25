@@ -165,8 +165,16 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         # samples
         z_batch, y_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
         t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
-        x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
+        # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
 
+        # t ~ t^(1/1+a) (inverse sampling)
+        u = torch.rand(batch_size, 1)
+        alpha = 1
+        power = (1 + alpha) / (2 + alpha)
+        t_batch = torch.pow(u, power)
+        
+        x_batch = self.path.sample_conditional_path(z_batch, t_batch) # x ~ p(x|z)
+        
         # put data on the doomsday device
         z_batch, y_batch = z_batch.to(device), y_batch.to(device)
         t_batch = t_batch.to(device)
