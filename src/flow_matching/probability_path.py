@@ -26,10 +26,19 @@ class ConditionalProbabilityPath(nn.Module, ABC):
             - x: samples from p_t(x), (num_samples, dim)
         """
         num_samples = t.shape[0]
+
         # Sample conditioning variable z ~ p(z)
         z, _ = self.sample_conditioning_variable(num_samples) 
-        # Sample conditional probability path x ~ p_t(x|z)
-        x = self.sample_conditional_path(z, t) # (num_samples, dim)
+
+        # sample from initial distribution
+        x0 = self.p_simple.sample(num_samples)
+
+        # move to same device
+        device = t.device
+        x0, z = x0.to(device), z.to(device)
+
+        # sample conditional probability path x ~ p_t(x|z)
+        x = self.sample_conditional_path(x0, z, t) # (num_samples, dim)
         return x
 
     @abstractmethod
@@ -45,7 +54,7 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         pass
     
     @abstractmethod
-    def sample_conditional_path(self, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def sample_conditional_path(self, x0, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         """
         Samples from the conditional distribution p_t(x|z)
         Args:
@@ -85,7 +94,7 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         z = self.p_data.sample(num_samples) 
         return z, torch.zeros_like(z) # dummy return value
 
-    def sample_conditional_path(self, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def sample_conditional_path(self, x0: torch.Tensor, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         """
         Samples the random variable X_t = (1-t) X_0 + tz
         Args:
@@ -94,16 +103,11 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         Returns:
             - x: samples from p_t(x|z), (num_samples, dim)
         """
-        x_0 = self.p_simple.sample(z.shape[0])
-        # move to the same device as z
-        device = z.device
-        x_0 = x_0.to(device)
-        t = t.to(device)
-        return (1 - t) * x_0 + z * t
+        return (1 - t) * x0 + z * t
 
-    def conditional_vector_field(self, x: torch.Tensor, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def conditional_vector_field(self, x0: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
         """
-        Evaluates the conditional vector field u_t(x|z) = (z - x) / (1 - t)
+        Evaluates the conditional vector field u_t(x|z) = (z - x0)
         Note: Only defined on t in [0,1)
         Args:
             - x: position variable (num_samples, dim)
@@ -112,7 +116,7 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         Returns:
             - conditional_vector_field: conditional vector field (num_samples, dim)
         """
-        return (z - x) / (1 - t)
+        return z - x0
 
 class GuidedLinearProbabilityPath(LinearConditionalProbabilityPath):
     
