@@ -65,7 +65,7 @@ class Trainer(ABC):
             if save_checkpoint and (epoch+1) % 100 == 0:
                 self.save_checkpoint(epoch, opt, losses)
 
-            progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.3f}, lr: {lr_scheduler.get_last_lr()[0]:.2e}')
+            progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.2e}, lr: {lr_scheduler.get_last_lr()[0]:.2e}')
 
         # Finish
         self.model.eval()
@@ -173,7 +173,7 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
         # t ~ t^(1/1+a) (inverse sampling)
         u = torch.rand(batch_size, 1)
-        alpha = 1
+        alpha = -0.25
         power = (1 + alpha) / (2 + alpha)
         t_batch = torch.pow(u, power)
         
@@ -189,17 +189,15 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
         # we take a monte carlo estimate of the loss
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
-        differences = (
-            self.model(x_batch, t_batch, y_batch)
-            - self.path.conditional_vector_field(x0_batch, z_batch)
-            ) # shape batch_size, ndim
+        predicted_field = self.model(x_batch, t_batch, y_batch)
+        target_field    = self.path.conditional_vector_field(x0_batch, z_batch)
 
-        losses = torch.sum(
-            differences ** 2,
-            dim = 1 # sum column wise
-        )
-        total_loss = torch.sum(losses)
+        differences = predicted_field - target_field # shape batch_size, ndim
+        MSE         = torch.sum(differences ** 2, dim = 1) # sum column wise
 
-        average =  total_loss / batch_size
+        field_size_penalty = torch.sum(predicted_field ** 2, dim=1)
+        h = 0.01
 
-        return average
+        losses = MSE + h * field_size_penalty
+
+        return torch.mean(losses)
