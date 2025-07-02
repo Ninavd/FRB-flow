@@ -74,7 +74,7 @@ def create_run_folder(path, job_id):
     # generate foldername w timestamp
     timestamp = datetime.now().strftime("%d_%m_%H%M")
     folder_name = "run_" + timestamp
-    folder_name += f"_{job_id}" if job_id else ""
+    folder_name = f"{job_id}_" + folder_name if job_id else folder_name
     full_path = path + '/' + folder_name
 
     # create run folder
