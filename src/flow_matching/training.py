@@ -28,7 +28,7 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
+    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, clip: float=None, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
         # report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -47,7 +47,7 @@ class Trainer(ABC):
         # (optional) create run folder and save settings
         if save_checkpoint:
             self.save_path = create_run_folder("../checkpoints", job_id)
-            self.save_config_file(num_epochs, lr, batch_size, self.save_path)
+            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path)
         
         # train loop
         progress_bar = tqdm(range(num_epochs))
@@ -57,6 +57,8 @@ class Trainer(ABC):
             loss = self.get_train_loss(device, batch_size, **kwargs)
             losses[epoch] = loss
             loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip) if clip else None
 
             opt.step()
             lr_scheduler.step() if epoch < lr_cutoff else None
@@ -77,17 +79,17 @@ class Trainer(ABC):
         """
         timestamp = datetime.now().strftime('%d-%m_%H:%M:%S')
         save_dict = {
-            "epoch": epoch,
-            "model_state_dict":self.model.state_dict(),
-            "optimizer_state_dict":optimizer.state_dict(),
-            "losses":losses,
-            "timestamp":timestamp
+            "epoch"                : epoch,
+            "model_state_dict"     : self.model.state_dict(),
+            "optimizer_state_dict" : optimizer.state_dict(),
+            "losses"               : losses,
+            "timestamp"            : timestamp
         }
         
         filename = f"training_checkpoint"
         torch.save(save_dict, os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, batch_size, path):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path):
         """
         Save yaml with training and model settings
         """
@@ -106,6 +108,7 @@ class Trainer(ABC):
                 "num_epochs"   : num_epochs,
                 "learning_rate": lr,
                 "batch_size"   : batch_size,
+                "gradient_clip": clip,
                 "optimizer"    : "adam"
             }
         }
@@ -194,10 +197,10 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
         differences = predicted_field - target_field # shape batch_size, ndim
         MSE         = torch.sum(differences ** 2, dim = 1) # sum column wise
+        
+        h = 0
+        field_size_penalty = h * torch.sum(predicted_field ** 2, dim=1)
 
-        field_size_penalty = torch.sum(predicted_field ** 2, dim=1)
-        h = 0.01
-
-        losses = MSE + h * field_size_penalty
+        losses = MSE + field_size_penalty
 
         return torch.mean(losses)
