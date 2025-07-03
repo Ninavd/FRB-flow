@@ -7,6 +7,7 @@ import yaml
 from abc import ABC, abstractmethod
 from datetime import datetime
 from tqdm import tqdm
+from ema_pytorch import EMA
 
 from src.flow_matching.probability_path import ConditionalProbabilityPath
 from src.flow_matching.helpers import model_size_b, create_run_folder
@@ -28,7 +29,7 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
-    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, clip: float=None, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
+    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, clip: float=None, use_ema: bool=True, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
         # report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -36,6 +37,14 @@ class Trainer(ABC):
         # initialize
         self.path.to(device)
         self.model.to(device)
+
+        if use_ema:
+            ema = EMA(
+                self.model,
+                beta= 0.9999,
+                update_after_step=100,
+                update_every = 10
+            )
 
         opt = self.get_optimizer(lr)
         lr_cutoff = int(0.9 * num_epochs)
@@ -63,13 +72,21 @@ class Trainer(ABC):
             opt.step()
             lr_scheduler.step() if epoch < lr_cutoff else None
 
+            ema.update() if use_ema else None 
+
             # save checkpoint every 100 epochs
             if save_checkpoint and (epoch+1) % 100 == 0:
                 self.save_checkpoint(epoch, opt, losses)
+                self.save_ema_checkpoint(ema) if use_ema else None
 
             progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.2e}, lr: {lr_scheduler.get_last_lr()[0]:.2e}')
 
-        # Finish
+        # save final models
+        if save_checkpoint:
+            self.save_checkpoint(epoch, opt, losses)
+            self.save_ema_checkpoint(ema) if use_ema else None
+
+        # finish
         self.model.eval()
         return losses
     
@@ -88,6 +105,10 @@ class Trainer(ABC):
         
         filename = f"training_checkpoint"
         torch.save(save_dict, os.path.join(self.save_path, filename + '.pth'))
+
+    def save_ema_checkpoint(self, ema):
+        filename = f"EMA_checkpoint"
+        torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
     def save_config_file(self, num_epochs, lr, clip, batch_size, path):
         """
