@@ -241,7 +241,29 @@ class LightCurveThinner(nn.Module):
             }
         }
         return config
+
+class LightCurveMLP(nn.Module):
+    """
+    MLP encoder for time series.
+    """
+    def __init__(self, layers):
+        super().__init__()
+        self.layers = layers
+        self.net = build_mlp(layers)
     
+    def forward(self, x):
+        return self.net(x)
+    
+    def get_config(self):
+        config = {
+            "name":self._get_name(),
+            "init_params":
+            {
+                "layers": self.layers,
+            }
+        }
+        return config
+
 def fourier_embedding(tau, latent_dim):
     # log-spaced frequencies
     freqs = torch.logspace(0, 3, latent_dim // 2)
