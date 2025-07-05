@@ -11,7 +11,8 @@ from src.flow_matching.distributions import Prior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.integration import EulerODESolver
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, fourier_embedding
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding
+from src.flow_matching.transformer import TransformerGuidedField
 from src.helpers import record_every
 
 import numpy as np
@@ -109,6 +110,9 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
     elif encoder == "THIN":
         latent_dim = 100
         time_seq_encoder = LightCurveThinner(latent_dim=100)
+    elif encoder == "MLP":
+        latent_dim = 128
+        time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
     else:
         latent_dim = 1000
         time_seq_encoder = None
@@ -120,14 +124,19 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
         tau_encoder=fourier_embedding
 
     theta_encoder = None
-    if encode_theta:
+    if encode_theta and model != "T":
         theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
+    elif encode_theta:
+        param_dim = 1
+        theta_encoder = lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
 
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
                                             time_seq_encoder=time_seq_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder, 
                                             combine=combine_mode
                                             )
+    elif model == "T":
+        vector_field = TransformerGuidedField(dim, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
     losses = trainer.train(epochs, device, lr, False if no_save else True, batch_size, job_id)
@@ -148,9 +157,9 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
 
-    parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train")
+    parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer")
 
-    parser.add_argument("-c", "--encoder", type=str, default="CNN", help="Time series encoder (CNN or THIN or NULL)")
+    parser.add_argument("-c", "--encoder", type=str, default="CNN", help="Time series encoder (CNN or THIN or MLP or NULL)")
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
  
@@ -168,8 +177,8 @@ if __name__=="__main__":
 
     args = parser.parse_args()
 
-    valid_models = ["MLP"]
-    valid_encoders = ["CNN", "THIN", "NULL"]
+    valid_models = ["MLP", "T"]
+    valid_encoders = ["CNN", "THIN", "MLP", "NULL"]
     valid_combine_modes = ["GLU", "concat"]
 
     # check correctness of args
