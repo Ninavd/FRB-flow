@@ -22,15 +22,15 @@ from src.MCMC.priors import UniformPrior
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
-def main(nwalkers, burn_steps, steps, parallel):
+def main(nwalkers, burn_steps, steps, parallel, save_plots):
     """
     Run MCMC sampler.
     """
     time = np.linspace(0, 1.0, 1000)
     
     # TODO: get via args
-    N = 1
-    inf_params = ["t0", "skew", "rise", "amp"]
+    N = 3
+    inf_params = ["t0", "amp", "skew", "rise"]
 
     amp  = [100.0 for _ in range(N)]
     t0   = np.sort(np.random.rand(N))
@@ -77,12 +77,12 @@ def main(nwalkers, burn_steps, steps, parallel):
     sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
 
     # short run to determine best initial position
-    state = sampler.run_mcmc(p0, 200)
+    state = sampler.run_mcmc(p0, int(0.5 * steps))
     sampler.reset()
 
     # correct walkers with low likelihood (otherwise likely to get stuck)
     rounded_probs = 1000 * np.floor(state.log_prob / 1000)
-    low_prob_mask = state.log_prob < np.max(rounded_probs)
+    low_prob_mask = state.log_prob < np.max(rounded_probs) - 0.01 * np.max(rounded_probs)
 
     variations      = np.ones((sum(low_prob_mask), ndim)) * np.random.uniform(low=0.9, high=1.1, size=(sum(low_prob_mask), ndim))
     most_likely_pos = state.coords[np.argmax(state.log_prob)]
@@ -90,8 +90,39 @@ def main(nwalkers, burn_steps, steps, parallel):
 
     print(f"Repositioned {sum(low_prob_mask)} of {nwalkers} walkers")
     
+    if sum(low_prob_mask) / nwalkers > 0.5:
+        print("ERROR: Had to reposition more than 50% of walkers, increase number of steps")
+        return 1
+
     # burn-in with repositioned walkers 
-    state = sampler.run_mcmc(state, burn_steps)
+    converged_params, i = 0, 1
+    r_threshold = 1.5
+
+    # repeat until convergence
+    while converged_params < ndim:
+
+        state = sampler.run_mcmc(state, burn_steps) 
+
+        # find r_hat of each param with arviz
+        inference_data = az.from_emcee(sampler) 
+        r_hats = az.rhat(inference_data)
+        _, r_hats = az.sel_utils.xarray_to_ndarray(r_hats)
+
+        # number of converged parameters
+        converged_params = np.sum(r_hats < r_threshold)
+
+        # log
+        print(f"Burn-in round {i} finished", end='\r')
+        i += 1
+
+        sampler.reset()
+
+        if i > 50:
+            raise TimeoutError(
+                "More than 50 rounds of burn-in executed without reaching convergence. Try increasing burn steps"
+                )
+
+    print("\n")
     sampler.reset()
 
     # running the sampler
@@ -114,6 +145,7 @@ def main(nwalkers, burn_steps, steps, parallel):
     N_samples = 100
     plot_posterior_samples(N_samples, simulated_counts, samples, inf_params, modelparams)
     plt.tight_layout()
+    plt.savefig("original_vs_posterior_samples.png") if save_plots else None
 
     # corner plot (or histogram for 1D)
     var_names = gen_parameter_labels(inf_params, N)
@@ -124,12 +156,16 @@ def main(nwalkers, burn_steps, steps, parallel):
         plot_1d_hist(samples, true_values)
 
     plt.tight_layout()
+    plt.savefig("corner_plot.png") if save_plots else None
+
     plt.show()
 
     # trace plot with arviz
     inference_data = az.from_emcee(sampler, var_names) 
     az.plot_trace(inference_data, compact=True)
     plt.tight_layout()
+    plt.savefig("trace_plot.png") if save_plots else None
+
     plt.show()
 
     # print some stats
@@ -144,6 +180,7 @@ if __name__=="__main__":
     parser.add_argument("-s", "--steps",   type=int, default=1000, help="Number of samples (steps per walker)")
     parser.add_argument("-b", "--burn",    type=int, default=300,  help="burn steps, number of burn-in steps used")
     parser.add_argument("--fast", action="store_true", help="speed up sampling by using parallelization")
+    parser.add_argument("--save_plots", action="store_true", help="save evaluation plots as png in cwd")
 
     args = parser.parse_args()
-    main(args.walkers, args.burn, args.steps, args.fast)
+    main(args.walkers, args.burn, args.steps, args.fast, args.save_plots)

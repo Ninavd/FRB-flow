@@ -103,7 +103,8 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         Returns:
             - x: samples from p_t(x|z), (num_samples, dim)
         """
-        return (1 - t) * x0 + z * t
+        sigma_min = 1e-4
+        return (1 - (1 - sigma_min) * t) * x0 + z * t
 
     def conditional_vector_field(self, x0: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
         """
@@ -116,7 +117,8 @@ class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
         Returns:
             - conditional_vector_field: conditional vector field (num_samples, dim)
         """
-        return z - x0
+        sigma_min = 1e-4
+        return z - (1 - sigma_min) * x0
 
 class GuidedLinearProbabilityPath(LinearConditionalProbabilityPath):
     
