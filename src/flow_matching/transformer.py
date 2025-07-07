@@ -1,3 +1,4 @@
+import numpy as np
 import torch 
 import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
@@ -76,17 +77,19 @@ class TransformerGuidedField(nn.Module):
         x   = self.theta_encoder(x) # (bs, N_bursts, N_params) (think this should be fine, MLP takes final dimension as input (?))
         
         # prepare y and tau to become part of token vectors (bs, N_tokens, token_dim) N_tokens = N_bursts
-        bs, time_dim = y.shape
-        y = y.view(bs, 1, time_dim)   # (bs, ≥1)    -> (bs, 1, ≥1)
-        y = y.repeat(1, N_bursts, 1)  # (bs, ≥1, 1) -> (bs, N, ≥1)
+        y = y.unsqueeze(1)            # (bs, ≥1)    -> (bs, 1, ≥1)
+        y = y.repeat(1, N_bursts, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
-        tau = tau.view(bs, 1, self.tau_dim)   # (bs, ≥1) -> (bs, 1, ≥1)
-        tau = tau.repeat(1, N_bursts, 1)      # (bs, ≥1) -> (bs, N, ≥1)
+        tau = tau.unsqueeze(1)                # (bs, ≥1)    -> (bs, 1, ≥1)
+        tau = tau.repeat(1, N_bursts, 1)      # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         # encoder input (bs, N_tokens, token_dim)
         tokens = torch.cat([y, x, tau], dim=-1) 
+        _, _, token_dim = tokens.shape
 
-        # add positional encoding?
+        # add positional encoding
+        positional_encoding = sinusoidal_PE(N_bursts, token_dim).unsqueeze(0).repeat(bs, 1, 1)
+        tokens += positional_encoding
 
         # go through encoder and project down
         encoder_output = self.encoder(tokens)   # (bs, N, latent_dim)
@@ -109,6 +112,25 @@ class TransformerGuidedField(nn.Module):
         }
         return config
 
+def sinusoidal_PE(N: int, d_model: int) -> torch.Tensor:
+    """
+    Sinusoidal positional encoding.
+
+    Args:
+        N (int): number of tokens.
+        d_model (int): token dimension.
+    """
+    position = torch.arange(N, dtype=torch.float).unsqueeze(1)  # (N, 1)
+
+    # original formula: 1 / 10000^(2i / d_model) (edited for stability)
+    div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))  # (d_model/2, )
+
+    # even indices get sin, uneven get cos
+    pos_encoding = torch.zeros(N, d_model)
+    pos_encoding[:, ::2]  = torch.sin(position * div_term) 
+    pos_encoding[:, 1::2] = torch.cos(position * div_term) 
+
+    return pos_encoding  
 
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
@@ -126,5 +148,5 @@ if __name__=="__main__":
     t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
     x_batch = path.sample_conditional_path(x0_batch, z_batch, t_batch)
 
-    tranny = TransformerGuidedField(dim=2, time_dim=128, time_seq_encoder=time_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder)
-    tranny(x_batch.cpu(), t_batch.cpu(), y_batch.cpu())
+    transformer = TransformerGuidedField(dim=2, time_dim=128, time_seq_encoder=time_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder)
+    transformer(x_batch.cpu(), t_batch.cpu(), y_batch.cpu())
