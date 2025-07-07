@@ -131,7 +131,13 @@ class Trainer(ABC):
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
                 "optimizer"    : "adam"
+            },
+            "path": {
+                "name"    :self.path.get_config(),
+                "p_simple":self.path.p_simple.get_config(),
+                "p_data"  : self.path.p_data.get_config()
             }
+
         }
 
         with open(os.path.join(path, "config.yaml"), "w") as f:

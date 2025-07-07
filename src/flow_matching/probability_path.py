@@ -77,6 +77,9 @@ class ConditionalProbabilityPath(nn.Module, ABC):
             - conditional_vector_field: conditional vector field (num_samples, dim)
         """ 
         pass
+
+    def get_config(self):
+        return self.__class__.__name__
     
 class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
 
