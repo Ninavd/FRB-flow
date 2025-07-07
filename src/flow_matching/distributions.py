@@ -33,6 +33,9 @@ class Prior(Sampleable):
         """
         t0_samples, _ = torch.sort(torch.rand((num_samples, 2)), dim=1)
         return t0_samples
+    
+    def get_config(self):
+        return self.__class__.__name__
 
 class UniformPrior(Sampleable):
 
@@ -62,21 +65,74 @@ class UniformPrior(Sampleable):
             return sorted_samples
         
         return samples
-
+    
+    def get_config(self):
+        config = {
+            "name":self.__class__.__name__, 
+            "init_params":
+            {
+                "x_min"        :self.x_min,
+                "x_max"        :self.x_max,
+                "log"          :self.log,
+                "enforce_order":self.enforce_order,
+                "dim"          :self.dim
+            }           
+        }
+        return config
+    
 class CompositePrior(Sampleable):
-    def __init__(self, priors: list[UniformPrior]):
+    def __init__(self, priors: dict[UniformPrior]):
         self.priors = priors
-        self.dim = sum([prior.dim for prior in priors])
+        self.dim = sum([priors[key].dim for key in priors])
 
     def sample(self, num_samples):
+        """
+        Sample composite prior. 
+        Samples from each prior and concatenates result in a Tensor.
+
+        Returns: 
+            torch.Tensor: (bs, dim)
+        """
         samples = torch.zeros((num_samples, self.dim))
         cursor = 0
-        for prior in self.priors:
+        for key in self.priors:
+            prior = self.priors[key]
             partial_sample = prior.sample(num_samples)
             samples[:, cursor : cursor + prior.dim] = partial_sample
             cursor = cursor + prior.dim
         return samples
+    
+    def sample_one_prior(self, name, num_samples):
+        """
+        Return samples from one of the priors. 
+        """
+        return self.priors[name].sample(num_samples)
+    
+    def samples_as_dict(self, samples):
+        """
+        Returns samples as a dictionary.
 
+            dict[str, torch.Tensor(bs, prior_dim)]
+        """
+        # samples (bs, dim) --> split into 4 (bs, dim // len(priors))
+        split_samples = torch.split(samples, self.dim // len(self.priors), dim =1)
+        sample_dict = {key : samples for key, samples in zip(self.priors, split_samples)}
+        return sample_dict
+    
+    def get_config(self):
+        priors_config = []
+        for prior in self.priors.values():
+            priors_config.append(prior.get_config())
+
+        config = {
+            "name":self.__class__.__name__,
+            "init_params": priors_config
+            
+        }
+
+        return config
+
+    
 class NewPosterior(Sampleable):
 
     """
@@ -86,8 +142,7 @@ class NewPosterior(Sampleable):
     def __init__(self, model_params, inf_params, prior: Sampleable):
         super().__init__()
         
-        # fixed burst parameters
-        self.model_params = model_params
+        self.model_params = model_params # fixed burst parameters
         self.inf_params = inf_params
         self.prior = prior
     
@@ -103,20 +158,9 @@ class NewPosterior(Sampleable):
         prior_samples = self.prior.sample((num_samples))
 
         burstparams = self.model_params['burstparams']
-        simulation_time_resolution = 1000 # len(self.model_params['time'])
-        simulations = torch.zeros((num_samples, simulation_time_resolution))
+        burstparams = self.edit_burstparams(burstparams, self.prior.samples_as_dict(prior_samples))
 
-        # TODO: find a cleaner way to do this
-        # sample simulated data from prior samples
-        for idx in range(num_samples):
-            
-            # samples new peaktimes
-            prior_sample = prior_samples[idx]
-            burstparams = self.edit_burstparams(burstparams, prior_sample)
-
-            # simulate with new params and save to array
-            simulated_lightcurve = self.light_curve_sample(burstparams=burstparams)
-            simulations[idx, :] = simulated_lightcurve
+        simulations = self.light_curve_sample(burstparams=burstparams)
 
         return prior_samples, simulations
     
@@ -141,16 +185,33 @@ class NewPosterior(Sampleable):
     
     def edit_burstparams(self, burstparams, prior_sample):
         """
-        Edit burstsparams dict from flat prior sample
+        Edit burstsparams dict with prior samples
         """
-        # NOTE: this code assumes N is fixed during training
-        N = self.model_params['ncomp']
-
-        for i, key in enumerate(self.inf_params):
-            param_sample = prior_sample[i * N : i * N + N]
-            burstparams[key] = list(param_sample.cpu().numpy())
-        
+        for key in prior_sample:
+            burstparams[key] = prior_sample[key]
         return burstparams
+    
+    def get_config(self):
+        # remove time from model params
+        model_params = self.model_params.copy()
+        model_params.pop('time')
+
+        # make burstparams save-able
+        model_params['burstparams'] = {
+        key: value.tolist() if torch.is_tensor(value) else value
+        for key, value in model_params['burstparams'].items()
+        }
+
+        config = {
+            "name":self.__class__.__name__,
+            "init_params":
+            {
+                "model_params": model_params,
+                "inf_params": self.inf_params,
+                "prior": self.prior.__class__.__name__
+            }
+        }
+        return config
 
 # Samplelable posterior needs to sample prior and generate simulated data. 
 class Posterior(Sampleable):
@@ -210,6 +271,9 @@ class Posterior(Sampleable):
         simulated_counts = torch.poisson(model)
 
         return simulated_counts
+    
+    def get_config(self):
+        return self.__class__.__name__
 
 class Gaussian(torch.nn.Module, Sampleable):
     """

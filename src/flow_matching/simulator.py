@@ -1,5 +1,4 @@
 import torch
-import matplotlib.pyplot as plt
 
 class Model:
 
@@ -7,21 +6,26 @@ class Model:
         self.time = time
         self.n_components = ncomp
         
-        # (bs, n)
         self.t0 = burstparams['t0']
-        bs, n = self.t0.shape
-
         self.amp = burstparams['amp']
         self.rise = burstparams['rise']
         self.skew = burstparams['skew']
         self.ybkg = ybkg
 
-        # expand fixed params
-        self.amp = torch.broadcast_to(self.amp, (bs, n))
-        self.rise = torch.broadcast_to(self.rise, (bs, n))
-        self.skew = torch.broadcast_to(self.skew, (bs, n))
-        self.time = torch.broadcast_to(self.time, (bs, len(time)))
+        # find desired shape (bs, n)
+        for value in burstparams.values():
+            if len(value.shape) == 2:
+                bs, n = value.shape 
+                break
 
+        # expand potentially fixed params
+        self.t0 = torch.broadcast_to(self.t0, (bs, n)) if self.t0.shape != (bs, n) else self.t0
+        self.amp = torch.broadcast_to(self.amp, (bs, n)) if self.amp.shape != (bs, n) else self.amp
+        self.rise = torch.broadcast_to(self.rise, (bs, n)) if self.rise.shape != (bs, n) else self.rise
+        self.skew = torch.broadcast_to(self.skew, (bs, n)) if self.skew.shape != (bs, n) else self.skew
+
+        self.time = torch.broadcast_to(self.time, (bs, len(time)))
+        
         if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*ncomp:
             raise ValueError("`burstparams` must contain all burst model parameters!")
 

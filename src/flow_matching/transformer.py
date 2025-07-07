@@ -7,7 +7,7 @@ from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.models import fourier_embedding
 
 class TransformerGuidedField(nn.Module):
-    def __init__(self, dim: int, time_dim: int = 1000, 
+    def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
                  time_seq_encoder: nn.Module | None = None, tau_encoder=None, theta_encoder=None):
         """
         Args:
@@ -16,6 +16,7 @@ class TransformerGuidedField(nn.Module):
         """
         super().__init__()
         self.dim   = dim
+        self.inf_params = inf_params
 
         # encoding dimensions
         self.time_dim  = time_dim # length of (encoded) lightcurve
@@ -70,7 +71,7 @@ class TransformerGuidedField(nn.Module):
 
         # split up x into N chunks of burstparams
         bs, dim = x.shape
-        N_bursts = x.shape[-1]
+        N_bursts = x.shape[-1] // len(self.inf_params)
         x = x.reshape(bs, N_bursts, dim // N_bursts) # (bs, dim) --> (bs, N, dim/N) TODO: only works when there's one param type 
 
         # put chunks of x through encoder (independently) 

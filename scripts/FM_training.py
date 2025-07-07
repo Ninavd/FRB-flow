@@ -7,7 +7,7 @@ from corner import corner
 sys.path.append('..')
 
 from src.simulator import Model, BurstSimulator
-from src.flow_matching.distributions import Prior, Posterior
+from src.flow_matching.distributions import Prior, Posterior, UniformPrior, CompositePrior, NewPosterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.integration import EulerODESolver
@@ -22,7 +22,7 @@ import torch
 from src.flow_matching.plotting import plot_loss, plot_snapshots
 from src.flow_matching.helpers import choose_device, build_mlp
 
-def evaluation_plots(losses,  vector_field, path, device, num_samples, save_path, show_plots, 
+def evaluation_plots(losses, vector_field, path, device, num_samples, save_path, show_plots, 
                      loss=True, snapshots=True, corner_plot=True
                     ):
 
@@ -99,9 +99,52 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
 
     # TRAINING
 
+    # TODO: get via args
+    N = 2                # number of components
+    inf_params = ["t0"]  # inference parameters
+
+    # define the priors
+    PRIORS = {
+        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
+        "amp" : UniformPrior(x_min=10,   x_max=300, log=False,  enforce_order=False, dim=N),
+        "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
+        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
+    }
+    prior_dict = {param : PRIORS[param] for param in inf_params}
+
+    # fixed burst parameters
+    time = torch.linspace(0, 1.0, 1000)
+    ybkg = 5.0
+    
+    # standard fixed component parameters
+    amp  = 100.0
+    rise = 0.03
+    skew = 5
+    
+    burstparams = {
+        't0'   : torch.sort(torch.rand(N))[0],
+        'amp'  : torch.Tensor([amp]).repeat(N),
+        'rise' : torch.Tensor([rise]).repeat(N),
+        'skew' : torch.Tensor([skew]).repeat(N)
+    }
+
+    # inference parameters are not fixed
+    for key in inf_params:
+        burstparams[key] = None 
+
+    modelparams = {
+        'time' : time,
+        'ncomp': N,
+        'burstparams': burstparams,
+        'ybkg': ybkg
+    }
+
+    prior     = CompositePrior(prior_dict)
+    posterior = NewPosterior(modelparams, inf_params, prior)
+
     path = GuidedLinearProbabilityPath(
-        p_simple=Prior(),
-        p_data=Posterior()
+        p_simple = prior,
+        p_data   = posterior
     )
 
     if encoder == "CNN":
@@ -117,7 +160,7 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
         latent_dim = 1000
         time_seq_encoder = None
 
-    dim = 2
+    dim = N * len(inf_params)
 
     tau_encoder = None
     if encode_tau:
@@ -127,16 +170,13 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
     if encode_theta and model != "T":
         theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
     elif encode_theta:
-        param_dim = 1
+        param_dim = len(inf_params)
         theta_encoder = lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
 
     if model == "MLP":
-        vector_field = MLPGuidedVectorField(dim=2, hiddens=[64, 64, 32, 16], time_dim=latent_dim, 
-                                            time_seq_encoder=time_seq_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder, 
-                                            combine=combine_mode
-                                            )
+        vector_field = MLPGuidedVectorField(dim, [64, 64, 32, 16], latent_dim, time_seq_encoder, tau_encoder, theta_encoder, combine_mode)
     elif model == "T":
-        vector_field = TransformerGuidedField(dim, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
+        vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
     losses = trainer.train(epochs, device, lr, clip, EMA, False if no_save else True, batch_size, job_id)
