@@ -13,7 +13,7 @@ from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.integration import EulerODESolver
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding
 from src.flow_matching.transformer import TransformerGuidedField
-from src.helpers import record_every
+from src.helpers import record_every, gen_parameter_labels
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -22,8 +22,8 @@ import torch
 from src.flow_matching.plotting import plot_loss, plot_snapshots
 from src.flow_matching.helpers import choose_device, build_mlp
 
-def evaluation_plots(losses, vector_field, path, device, num_samples, save_path, show_plots, 
-                     loss=True, snapshots=True, corner_plot=True
+def evaluation_plots(losses, vector_field, path, device, num_samples, inf_params, N, save_path, show_plots, 
+                     loss=True, snapshots=True, corner_plot=True, 
                     ):
 
     # plot loss 
@@ -31,22 +31,20 @@ def evaluation_plots(losses, vector_field, path, device, num_samples, save_path,
         plot_loss(losses, window_size=10, xlog=False, save_path=save_path, show=show_plots)
         plot_loss(losses, window_size=10, save_path=save_path, show=show_plots)
 
-    # fixed model parameters (NOTE: Should be same as used during training in Posterior)
     if snapshots or corner_plot:
-        N = 2
+        # fixed model parameters (NOTE: Should be same as used during training in Posterior)
+        # NOTE: these have to obey the prior! (i.e. t0_1 < t0_2 < ... < t0_n)
         time = np.linspace(0, 1.0, 1000)
         amp  = 100.0
         rise = 0.03
         skew = 5
         ybkg = 5.0
-        true_t0 = [0.2, 0.8] # NOTE: this has to obey the prior! (i.e. t0_1 < t0_2 < ... < t0_n)
-
-        # generate simulated data for one burst
+         
         burstparams = {
-            't0'   : true_t0, 
-            'amp'  : [amp, amp],
-            'rise' : [rise, rise],
-            'skew' : [skew, skew]
+        't0'   : np.sort(np.random.rand(N)),
+        'amp'  : [amp for _ in range(N)],
+        'rise' : [rise for _ in range(N)],
+        'skew' : [skew for _ in range(N)]
         }
 
         # generate one instance of simulated data to guide prior samples with
@@ -74,18 +72,25 @@ def evaluation_plots(losses, vector_field, path, device, num_samples, save_path,
         record_every_idxs = record_every(nts, nts // (num_marginals - 1))
         xts = xts[:, record_every_idxs, :]
 
-        # plot snapshots of marginal path
-        final_snapshot = plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path, show_plots)
+        # plot snapshots of marginal path if space is 2D
+        final_snapshot = xts[:, -1, :]
+        if snapshots and N * len(inf_params) == 2:
+            plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path, show_plots)
 
     # corner plot
     if corner_plot:
-        fig = corner(final_snapshot.cpu().numpy(), labels=["t0_1", "t0_2"], truths=np.array(true_t0))
+        
+        var_names = gen_parameter_labels(inf_params, N)
+        true_values = np.array([simulator.get_true(key) for key in inf_params])[0]
+        fig = corner(final_snapshot.cpu().numpy(), labels=var_names, truths=true_values)
 
         if save_path:
             filepath = os.path.join(save_path, 'corner_plot.png')
             fig.savefig(filepath, bbox_inches="tight") 
 
         plt.show() if show_plots else None
+
+    # TODO: add plt of posterior samples over model and data 
 
 def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
          epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
@@ -100,7 +105,7 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
     # TRAINING
 
     # TODO: get via args
-    N = 2                # number of components
+    N = 3                # number of components
     inf_params = ["t0"]  # inference parameters
 
     # define the priors
@@ -192,7 +197,9 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
         save_path = os.path.join(trainer.save_path, 'plots')
         os.makedirs(save_path, exist_ok=True)
 
-    evaluation_plots(losses, vector_field, path, device, num_samples, save_path, show_plots)
+    evaluation_plots(
+        losses, vector_field, path, device, num_samples, 
+        inf_params, N, save_path, show_plots)
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")

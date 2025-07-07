@@ -13,7 +13,7 @@ from corner import corner
 from src.simulator import BurstSimulator, Model
 from src.helpers import plot_posterior_samples
 
-from src.MCMC.helpers import gen_parameter_labels
+from src.helpers import gen_parameter_labels
 from src.MCMC.plotting import plot_1d_hist
 from src.MCMC.posterior import log_posterior
 from src.MCMC.priors import UniformPrior
@@ -30,7 +30,7 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
     
     # TODO: get via args
     N = 3
-    inf_params = ["t0", "amp", "skew", "rise"]
+    inf_params = ["t0"]
 
     amp  = [100.0 for _ in range(N)]
     t0   = np.sort(np.random.rand(N))

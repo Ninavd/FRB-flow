@@ -1,6 +1,7 @@
 import torch 
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Iterable
 
 from src.simulator import Model
 
@@ -58,6 +59,18 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
 
     plt.title(f'{N} posterior samples')
     plt.legend()
+
+def gen_parameter_labels(inf_params, N) -> Iterable[str]:
+    """
+    Generates parameter labels of shape t0_1, t0_2, amp_1, amp_2, etc.
+    """
+    labels = []
+    for key in inf_params:
+        for i in range(N):
+            label = f"{key}_{i+1}"
+            labels.append(label)
+
+    return labels
 
 if __name__=="__main__":
     pass
