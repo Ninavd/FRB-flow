@@ -88,7 +88,7 @@ class TransformerGuidedField(nn.Module):
         _, _, token_dim = tokens.shape
 
         # add positional encoding
-        positional_encoding = sinusoidal_PE(N_bursts, token_dim).unsqueeze(0).repeat(bs, 1, 1)
+        positional_encoding = sinusoidal_PE(N_bursts, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
         tokens += positional_encoding
 
         # go through encoder and project down
@@ -112,13 +112,14 @@ class TransformerGuidedField(nn.Module):
         }
         return config
 
-def sinusoidal_PE(N: int, d_model: int) -> torch.Tensor:
+def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     """
     Sinusoidal positional encoding.
 
     Args:
         N (int): number of tokens.
         d_model (int): token dimension.
+        device (torch.device): [optional] location of returned tensor.
     """
     position = torch.arange(N, dtype=torch.float).unsqueeze(1)  # (N, 1)
 
@@ -126,7 +127,7 @@ def sinusoidal_PE(N: int, d_model: int) -> torch.Tensor:
     div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))  # (d_model/2, )
 
     # even indices get sin, uneven get cos
-    pos_encoding = torch.zeros(N, d_model)
+    pos_encoding = torch.zeros(N, d_model, device=device)
     pos_encoding[:, ::2]  = torch.sin(position * div_term) 
     pos_encoding[:, 1::2] = torch.cos(position * div_term) 
 
