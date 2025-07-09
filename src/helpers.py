@@ -1,6 +1,7 @@
 import torch 
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 from typing import Iterable
 
 from src.simulator import Model
@@ -29,7 +30,7 @@ def update_modelparams(sample, inf_params, modelparams):
         modelparams['burstparams'][key] = sample[start:stop]
     return modelparams
 
-def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams):
+def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams, true_flux=None, show=False, save_path=None):
     """
     Overlay samples from posterior on simulated curve.
 
@@ -42,7 +43,7 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
     """
     # plot the data
     time = modelparams["time"]
-    plt.plot(time, simulated_counts, 'k-', alpha=0.1, label="data")
+    plt.plot(time, simulated_counts, 'k-', alpha=0.2, label="data")
 
     for _ in range(N):
 
@@ -57,8 +58,18 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
         # plot the sample
         plt.plot(time, model, alpha=0.3)
 
+    if true_flux is not None:
+        plt.plot(np.linspace(0, 1, len(true_flux)), true_flux, 'r--', linewidth=1, label="ground-truth")
+    
     plt.title(f'{N} posterior samples')
     plt.legend()
+    plt.tight_layout()
+
+    if save_path:
+        filepath = os.path.join(save_path, 'posterior_samples.png')
+        plt.savefig(filepath, bbox_inches="tight") 
+    
+    plt.show() if show else None
 
 def gen_parameter_labels(inf_params, N) -> Iterable[str]:
     """

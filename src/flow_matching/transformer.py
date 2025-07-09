@@ -2,7 +2,7 @@ import numpy as np
 import torch 
 import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
-from src.flow_matching.distributions import Posterior, Prior
+from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.models import fourier_embedding
 
@@ -108,7 +108,8 @@ class TransformerGuidedField(nn.Module):
             "init_params":
             {
                 "dim":self.dim,
-                "time_dim":self.time_dim,
+                "inf_params":self.inf_params,
+                "time_dim":self.time_dim
             }
         }
         return config
@@ -136,8 +137,8 @@ def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
 
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
-        p_simple=Prior(),
-        p_data=Posterior()
+        p_simple=PeaktimePrior(),
+        p_data=PeaktimePosterior()
     )
     dim = 2
     theta_encoder = lambda theta_dim : build_mlp([1, 8, 32, 64])

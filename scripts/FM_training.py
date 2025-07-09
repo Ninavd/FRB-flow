@@ -2,96 +2,55 @@ import argparse
 import os
 import sys
 
-from corner import corner
-
 sys.path.append('..')
-
-from src.simulator import Model, BurstSimulator
-from src.flow_matching.distributions import Prior, Posterior, UniformPrior, CompositePrior, NewPosterior
+from copy import deepcopy
+from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
-from src.flow_matching.integration import EulerODESolver
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding
 from src.flow_matching.transformer import TransformerGuidedField
-from src.helpers import record_every, gen_parameter_labels
 
-import numpy as np
-from matplotlib import pyplot as plt
 import torch
 
-from src.flow_matching.plotting import plot_loss, plot_snapshots
+from src.flow_matching.plotting import evaluation_plots
 from src.flow_matching.helpers import choose_device, build_mlp
 
-def evaluation_plots(losses, vector_field, path, device, num_samples, inf_params, N, save_path, show_plots, 
-                     loss=True, snapshots=True, corner_plot=True, 
-                    ):
+def pick_timeseries_encoder(type):
+    """
+    Select light curve encoder from given CLA.
+    """
+    if type == "CNN":
+        latent_dim = 128
+        time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
 
-    # plot loss 
-    if loss:
-        plot_loss(losses, window_size=10, xlog=False, save_path=save_path, show=show_plots)
-        plot_loss(losses, window_size=10, save_path=save_path, show=show_plots)
+    elif type == "THIN":
+        latent_dim = 100
+        time_seq_encoder = LightCurveThinner(latent_dim)
 
-    if snapshots or corner_plot:
-        # fixed model parameters (NOTE: Should be same as used during training in Posterior)
-        # NOTE: these have to obey the prior! (i.e. t0_1 < t0_2 < ... < t0_n)
-        time = np.linspace(0, 1.0, 1000)
-        amp  = 100.0
-        rise = 0.03
-        skew = 5
-        ybkg = 5.0
-         
-        burstparams = {
-        't0'   : np.sort(np.random.rand(N)),
-        'amp'  : [amp for _ in range(N)],
-        'rise' : [rise for _ in range(N)],
-        'skew' : [skew for _ in range(N)]
-        }
-
-        # generate one instance of simulated data to guide prior samples with
-        model = Model(time=time, ncomp=N, burstparams=burstparams, ybkg=ybkg)
-        simulator = BurstSimulator(model)
-        x_counts = simulator.simulate_burst() 
-
-        num_samples = num_samples  # number of prior samples to transform 
-        num_marginals = 5   # number of snapshots
-
-        # TODO: maybe do this in batches
-        # use same data point for conditioning all prior samples
-        simulations = torch.tensor(x_counts, device=device, dtype=torch.float).repeat(num_samples, 1)
-
-        # initialize ODE solver
-        solver = EulerODESolver(vector_field)
-        nts = 100
-        ts = torch.linspace(0, 1, nts).to(device)
-
-        # simulate ODE starting from x0
-        x0 = path.p_simple.sample(num_samples).to(device)
-        xts = solver.solve_with_trajectory(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations)
-
-        # only save num_marginals snapshots 
-        record_every_idxs = record_every(nts, nts // (num_marginals - 1))
-        xts = xts[:, record_every_idxs, :]
-
-        final_snapshot = xts[:, -1, :]
-    
-    # plot snapshots of marginal path if space is 2D
-    if snapshots and N * len(inf_params) == 2:
-        plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, save_path, show_plots)
-
-    # corner plot
-    if corner_plot:
+    elif type == "MLP":
+        latent_dim = 128
+        time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
         
-        var_names = gen_parameter_labels(inf_params, N)
-        true_values = np.array([simulator.get_true(key) for key in inf_params]).flatten()
-        fig = corner(final_snapshot.cpu().numpy(), labels=var_names, truths=true_values)
+    else:
+        latent_dim = 1000
+        time_seq_encoder = None
 
-        if save_path:
-            filepath = os.path.join(save_path, 'corner_plot.png')
-            fig.savefig(filepath, bbox_inches="tight") 
+    return latent_dim, time_seq_encoder
 
-        plt.show() if show_plots else None
-
-    # TODO: add plt of posterior samples over model and data 
+def pick_theta_encoder(encode, inf_params, model, vector_dim):
+    """
+    Transformer: parameters of each burst component pass through independently.
+    MLP: the entire sample is passed through the encoder.
+    Hence different input dimensions are required for each one. 
+    """
+    if encode and model != "T":
+        return lambda theta_dim : build_mlp([vector_dim, vector_dim * 4, vector_dim * 8, theta_dim])
+    
+    elif encode:
+        param_dim = len(inf_params)
+        return lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
+    
+    return None
 
 def main(ncomp: int, inf_params: list[str],
         model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
@@ -109,7 +68,7 @@ def main(ncomp: int, inf_params: list[str],
     # number of burst components
     N = ncomp                
 
-    print(f"\n Training data will have {N} burst components and sample {inf_params} from the prior \n")
+    print(f"\n Training data will have {N} burst component{'' if N == 1 else 's'} and sample {inf_params} from the prior \n")
 
     # define the priors
     PRIORS = {
@@ -130,15 +89,11 @@ def main(ncomp: int, inf_params: list[str],
     SKEW = 5
     
     burstparams = {
-        't0'   : torch.sort(torch.rand(N))[0],
+        't0'   : torch.linspace(0.1, 0.8, N),
         'amp'  : torch.Tensor([AMP]).repeat(N),
         'rise' : torch.Tensor([RISE]).repeat(N),
         'skew' : torch.Tensor([SKEW]).repeat(N)
     }
-
-    # inference parameters are not fixed
-    for key in inf_params:
-        burstparams[key] = None 
 
     modelparams = {
         'time' : TIME,
@@ -148,39 +103,21 @@ def main(ncomp: int, inf_params: list[str],
     }
 
     prior     = CompositePrior(prior_dict)
-    posterior = NewPosterior(modelparams, inf_params, prior)
+    posterior = Posterior(deepcopy(modelparams), inf_params, prior)
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
         p_data   = posterior
     )
 
-    if encoder == "CNN":
-        latent_dim = 128
-        time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
-    elif encoder == "THIN":
-        latent_dim = 100
-        time_seq_encoder = LightCurveThinner(latent_dim=100)
-    elif encoder == "MLP":
-        latent_dim = 128
-        time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
-    else:
-        latent_dim = 1000
-        time_seq_encoder = None
-
+    # dimension of vector field
     dim = N * len(inf_params)
 
-    tau_encoder = None
-    if encode_tau:
-        tau_encoder=fourier_embedding
-
-    theta_encoder = None
-    if encode_theta and model != "T":
-        theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
-    elif encode_theta:
-        param_dim = len(inf_params)
-        theta_encoder = lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
-
+    # encoders
+    latent_dim, time_seq_encoder = pick_timeseries_encoder(encoder)
+    tau_encoder   = fourier_embedding if encode_tau else None
+    theta_encoder = pick_theta_encoder(encode_theta, inf_params, model, dim)
+    
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim, [64, 64, 32, 16], latent_dim, time_seq_encoder, tau_encoder, theta_encoder, combine_mode)
     elif model == "T":
@@ -202,7 +139,8 @@ def main(ncomp: int, inf_params: list[str],
 
     evaluation_plots(
         losses, vector_field, path, device, num_samples, 
-        inf_params, N, save_path, show_plots)
+        inf_params, N, modelparams, save_path, show_plots
+        )
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
