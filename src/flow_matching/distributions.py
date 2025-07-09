@@ -21,22 +21,6 @@ class Sampleable(ABC):
         """
         pass
 
-# Samplelable prior for t0_1 and t0_2
-class Prior(Sampleable):
-
-    def sample(self, num_samples: int) -> torch.Tensor:
-        """
-        Args:
-            num_samples: number of samples to generate
-        Returns:
-            torch.Tensor: shape (num_samples, 2)
-        """
-        t0_samples, _ = torch.sort(torch.rand((num_samples, 2)), dim=1)
-        return t0_samples
-    
-    def get_config(self):
-        return self.__class__.__name__
-
 class UniformPrior(Sampleable):
 
     def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int):
@@ -127,19 +111,17 @@ class CompositePrior(Sampleable):
         config = {
             "name":self.__class__.__name__,
             "init_params": priors_config
-            
         }
 
         return config
 
-    
-class NewPosterior(Sampleable):
+class Posterior(Sampleable):
 
     """
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
     """
 
-    def __init__(self, model_params, inf_params, prior: Sampleable):
+    def __init__(self, model_params, inf_params, prior: CompositePrior):
         super().__init__()
         
         self.model_params = model_params # fixed burst parameters
@@ -213,8 +195,24 @@ class NewPosterior(Sampleable):
         }
         return config
 
+# Samplelable prior for t0_1 and t0_2
+class PeaktimePrior(Sampleable):
+
+    def sample(self, num_samples: int) -> torch.Tensor:
+        """
+        Args:
+            num_samples: number of samples to generate
+        Returns:
+            torch.Tensor: shape (num_samples, 2)
+        """
+        t0_samples, _ = torch.sort(torch.rand((num_samples, 2)), dim=1)
+        return t0_samples
+    
+    def get_config(self):
+        return self.__class__.__name__
+
 # Samplelable posterior needs to sample prior and generate simulated data. 
-class Posterior(Sampleable):
+class PeaktimePosterior(Sampleable):
 
     """
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
@@ -241,7 +239,7 @@ class Posterior(Sampleable):
             'skew' : torch.Tensor([skew, skew])
         }
     
-    def sample(self, num_samples: int, prior=Prior()) -> Tuple[torch.Tensor]:
+    def sample(self, num_samples: int, prior) -> Tuple[torch.Tensor]:
         """
         Args:
             num_samples: number of samples to generate

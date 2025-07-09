@@ -4,7 +4,7 @@ import sys
 
 sys.path.append('..')
 
-from src.flow_matching.distributions import UniformPrior, CompositePrior, NewPosterior
+from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding
@@ -15,6 +15,42 @@ import torch
 from src.flow_matching.plotting import evaluation_plots
 from src.flow_matching.helpers import choose_device, build_mlp
 
+def pick_timeseries_encoder(type):
+    """
+    Select light curve encoder from given CLA.
+    """
+    if type == "CNN":
+        latent_dim = 128
+        time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
+
+    elif type == "THIN":
+        latent_dim = 100
+        time_seq_encoder = LightCurveThinner(latent_dim)
+
+    elif type == "MLP":
+        latent_dim = 128
+        time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
+        
+    else:
+        latent_dim = 1000
+        time_seq_encoder = None
+
+    return latent_dim, time_seq_encoder
+
+def pick_theta_encoder(encode, inf_params, model, vector_dim):
+    """
+    Transformer: parameters of each burst component pass through independently.
+    MLP: the entire sample is passed through the encoder.
+    Hence different input dimensions are required for each one. 
+    """
+    if encode and model != "T":
+        return lambda theta_dim : build_mlp([vector_dim, vector_dim * 4, vector_dim * 8, theta_dim])
+    
+    elif encode:
+        param_dim = len(inf_params)
+        return lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
+    
+    return None
 
 def main(ncomp: int, inf_params: list[str],
         model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
@@ -71,39 +107,21 @@ def main(ncomp: int, inf_params: list[str],
     }
 
     prior     = CompositePrior(prior_dict)
-    posterior = NewPosterior(modelparams, inf_params, prior)
+    posterior = Posterior(modelparams, inf_params, prior)
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
         p_data   = posterior
     )
 
-    if encoder == "CNN":
-        latent_dim = 128
-        time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
-    elif encoder == "THIN":
-        latent_dim = 100
-        time_seq_encoder = LightCurveThinner(latent_dim=100)
-    elif encoder == "MLP":
-        latent_dim = 128
-        time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
-    else:
-        latent_dim = 1000
-        time_seq_encoder = None
-
+    # dimension of vector field
     dim = N * len(inf_params)
 
-    tau_encoder = None
-    if encode_tau:
-        tau_encoder=fourier_embedding
-
-    theta_encoder = None
-    if encode_theta and model != "T":
-        theta_encoder = lambda theta_dim : build_mlp([dim] + [dim * 4, dim * 8] + [theta_dim])
-    elif encode_theta:
-        param_dim = len(inf_params)
-        theta_encoder = lambda theta_dim : build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
-
+    # encoders
+    latent_dim, time_seq_encoder = pick_timeseries_encoder(encoder)
+    tau_encoder   = fourier_embedding if encode_tau else None
+    theta_encoder = pick_theta_encoder(encode_theta, inf_params, model, dim)
+    
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim, [64, 64, 32, 16], latent_dim, time_seq_encoder, tau_encoder, theta_encoder, combine_mode)
     elif model == "T":
@@ -125,7 +143,8 @@ def main(ncomp: int, inf_params: list[str],
 
     evaluation_plots(
         losses, vector_field, path, device, num_samples, 
-        inf_params, N, save_path, show_plots)
+        inf_params, N, save_path, show_plots
+        )
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
