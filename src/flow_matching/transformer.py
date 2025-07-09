@@ -53,7 +53,7 @@ class TransformerGuidedField(nn.Module):
             )
 
         # tokens pass through down projection independently
-        burst_params = 1  # TODO: edit when adding more params
+        burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
 
     def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor):
