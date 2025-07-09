@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.append('..')
-
+from copy import deepcopy
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
@@ -89,15 +89,11 @@ def main(ncomp: int, inf_params: list[str],
     SKEW = 5
     
     burstparams = {
-        't0'   : torch.sort(torch.rand(N))[0],
+        't0'   : torch.linspace(0.1, 0.8, N),
         'amp'  : torch.Tensor([AMP]).repeat(N),
         'rise' : torch.Tensor([RISE]).repeat(N),
         'skew' : torch.Tensor([SKEW]).repeat(N)
     }
-
-    # inference parameters are not fixed
-    for key in inf_params:
-        burstparams[key] = None 
 
     modelparams = {
         'time' : TIME,
@@ -107,7 +103,7 @@ def main(ncomp: int, inf_params: list[str],
     }
 
     prior     = CompositePrior(prior_dict)
-    posterior = Posterior(modelparams, inf_params, prior)
+    posterior = Posterior(deepcopy(modelparams), inf_params, prior)
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
@@ -143,7 +139,7 @@ def main(ncomp: int, inf_params: list[str],
 
     evaluation_plots(
         losses, vector_field, path, device, num_samples, 
-        inf_params, N, save_path, show_plots
+        inf_params, N, modelparams, save_path, show_plots
         )
 
 if __name__=="__main__":

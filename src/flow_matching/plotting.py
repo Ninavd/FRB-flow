@@ -121,7 +121,8 @@ def corner_plot(samples:np.ndarray, simulator, inf_params, N, save_path: str | N
     plt.show() if show else None
 
 def evaluation_plots(losses, vector_field, path, device, 
-                     num_samples, inf_params, N, save_path, show_plots, 
+                     num_samples, inf_params, N, modelparams, 
+                     save_path, show_plots, 
                      loss=True, snapshots=True, make_corner=True, 
                     ):
 
@@ -131,23 +132,7 @@ def evaluation_plots(losses, vector_field, path, device,
         plot_loss(losses, window_size=10, save_path=save_path, show=show_plots)
 
     if snapshots or make_corner:
-        # fixed model parameters (NOTE: Should be same as used during training in Posterior)
-        # NOTE: these have to obey the prior! (i.e. t0_1 < t0_2 < ... < t0_n)
-        time = np.linspace(0, 1.0, 1000)
-        amp  = 100.0
-        rise = 0.03
-        skew = 5
-        ybkg = 5.0
-         
-        burstparams = {
-        't0'   : np.linspace(0.1, 0.8, N),
-        'amp'  : [amp for _ in range(N)],
-        'rise' : [rise for _ in range(N)],
-        'skew' : [skew for _ in range(N)]
-        }
-
-        # generate one instance of simulated data to guide prior samples with
-        modelparams={'time':time, 'ncomp':N, 'burstparams':burstparams, 'ybkg':ybkg}
+       # generate one instance of simulated data to guide prior samples with
         model = Model(**modelparams)
         simulator = BurstSimulator(model)
         x_counts = simulator.simulate_burst() 
