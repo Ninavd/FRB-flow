@@ -72,16 +72,17 @@ def evaluation_plots(losses, vector_field, path, device, num_samples, inf_params
         record_every_idxs = record_every(nts, nts // (num_marginals - 1))
         xts = xts[:, record_every_idxs, :]
 
-        # plot snapshots of marginal path if space is 2D
         final_snapshot = xts[:, -1, :]
-        if snapshots and N * len(inf_params) == 2:
-            plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path, show_plots)
+    
+    # plot snapshots of marginal path if space is 2D
+    if snapshots and N * len(inf_params) == 2:
+        plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path, show_plots)
 
     # corner plot
     if corner_plot:
         
         var_names = gen_parameter_labels(inf_params, N)
-        true_values = np.array([simulator.get_true(key) for key in inf_params])[0]
+        true_values = np.array([simulator.get_true(key) for key in inf_params]).flatten()
         fig = corner(final_snapshot.cpu().numpy(), labels=var_names, truths=true_values)
 
         if save_path:
@@ -92,10 +93,11 @@ def evaluation_plots(losses, vector_field, path, device, num_samples, inf_params
 
     # TODO: add plt of posterior samples over model and data 
 
-def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
-         epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
-         num_samples: int, show_plots: bool, no_save: bool, job_id: int | None
-         ):
+def main(ncomp: int, inf_params: list[str],
+        model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
+        epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
+        num_samples: int, show_plots: bool, no_save: bool, job_id: int | None
+        ):
     """
     Train and evaluate flow matching model.
     """
@@ -103,10 +105,11 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
     print("CURRENT DEVICE: ", device)
 
     # TRAINING
+    
+    # number of burst components
+    N = ncomp                
 
-    # TODO: get via args
-    N = 3                # number of components
-    inf_params = ["t0"]  # inference parameters
+    print(f"\n Training data will have {N} burst components and sample {inf_params} from the prior \n")
 
     # define the priors
     PRIORS = {
@@ -115,22 +118,22 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
         "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
     }
+
+    # only use priors of learnable parameters
     prior_dict = {param : PRIORS[param] for param in inf_params}
 
-    # fixed burst parameters
-    time = torch.linspace(0, 1.0, 1000)
-    ybkg = 5.0
-    
-    # standard fixed component parameters
-    amp  = 100.0
-    rise = 0.03
-    skew = 5
+    # standard burst parameter values when fixed
+    TIME = torch.linspace(0, 1.0, 1000)
+    YBKG = 5.0
+    AMP  = 100.0
+    RISE = 0.03
+    SKEW = 5
     
     burstparams = {
         't0'   : torch.sort(torch.rand(N))[0],
-        'amp'  : torch.Tensor([amp]).repeat(N),
-        'rise' : torch.Tensor([rise]).repeat(N),
-        'skew' : torch.Tensor([skew]).repeat(N)
+        'amp'  : torch.Tensor([AMP]).repeat(N),
+        'rise' : torch.Tensor([RISE]).repeat(N),
+        'skew' : torch.Tensor([SKEW]).repeat(N)
     }
 
     # inference parameters are not fixed
@@ -138,10 +141,10 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
         burstparams[key] = None 
 
     modelparams = {
-        'time' : time,
+        'time' : TIME,
         'ncomp': N,
         'burstparams': burstparams,
-        'ybkg': ybkg
+        'ybkg': YBKG
     }
 
     prior     = CompositePrior(prior_dict)
@@ -203,21 +206,28 @@ def main(model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
+    
+    # training data
+    parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in training data")
+    parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names to learn from training data.", required=True)
 
+    # ML model
     parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer")
 
-    parser.add_argument("-c", "--encoder", type=str, default="CNN", help="Time series encoder (CNN or THIN or MLP or NULL)")
+    parser.add_argument("-c", "--encoder", type=str, default="MLP", help="Time series encoder (CNN or THIN or MLP or NULL)")
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
  
     parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [GLU or concat]")
 
+    # training
     parser.add_argument("-e","--epochs", type=int, default=100_000, help="epochs")
     parser.add_argument("-b","--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("-l", "--lr", type=float, default=5e-4, help="learning rate")
     parser.add_argument("--clip", type=float, default=None, help="Max norm of the gradient")
     parser.add_argument("--EMA", action="store_true", help="Use Exponential Model Averaging")
 
+    # evaluation
     parser.add_argument("-s", "--num_samples", type=int, default=20_000, help="Number of samples used to construct final posterior")
     parser.add_argument("--show_plots", action="store_true", help="show evaluation plots in interactive window")
     parser.add_argument("--no_save", action="store_true", help="Do not save training checkpoints and plots (not recommended for long runs)")
@@ -229,16 +239,21 @@ if __name__=="__main__":
     valid_models = ["MLP", "T"]
     valid_encoders = ["CNN", "THIN", "MLP", "NULL"]
     valid_combine_modes = ["GLU", "concat"]
+    valid_inf_params = {"t0", "amp", "skew", "rise"}
 
     # check correctness of args
     if args.model not in valid_models:
-        print(f"model argument invalid, must be in {valid_models}")
+        print(f"model argument \'{args.model}\' invalid, must be in {valid_models}")
     elif args.encoder not in valid_encoders:
-        print(f"encoder argument invalid, must be in {valid_encoders}")
+        print(f"encoder argument \'{args.encoder}\' invalid, must be in {valid_encoders}")
     elif args.combine_mode not in valid_combine_modes:
-        print(f"Combine mode argument invalid, must be in {valid_combine_modes}")
+        print(f"Combine mode argument \'{args.combine_mode}\' invalid, must be in {valid_combine_modes}")
+    elif len(set(args.inf_params) & valid_inf_params) != len(args.inf_params):
+        print(f"inference parameters argument {args.inf_params} invalid, must be in {valid_inf_params}")
     else:
         main(
+            args.ncomp, args.inf_params,
             args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode,
             args.epochs, args.batch_size, args.lr, args.clip, args.EMA, 
-            args.num_samples, args.show_plots, args.no_save, args.job_id)
+            args.num_samples, args.show_plots, args.no_save, args.job_id
+            )
