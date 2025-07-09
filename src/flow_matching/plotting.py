@@ -5,6 +5,8 @@ import os
 
 from numpy.lib.stride_tricks import sliding_window_view
 
+from src.helpers import gen_parameter_labels
+
 # Several plotting utility functions
 def hist2d_samples(samples, bins: int = 200, percentile: int = 99, range=None, **kwargs):
     """
@@ -30,7 +32,9 @@ def hist2d_samples(samples, bins: int = 200, percentile: int = 99, range=None, *
 
     # Plot using imshow for more control
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-    plt.imshow(H.T, origin='lower', extent=extent, norm=norm, **kwargs)
+    aspect = max(range[0]) / max(range[1]) # square plot
+    plt.imshow(H.T, origin='lower', extent=extent, norm=norm, aspect=aspect, **kwargs)
+    return range
 
 def plot_loss(losses, window_size=None, ylog=True, xlog=True, save_path=None, show=True, **kwargs):
     """Plot evolution of loss over time."""
@@ -57,7 +61,7 @@ def plot_loss(losses, window_size=None, ylog=True, xlog=True, save_path=None, sh
     
     plt.show() if show else None
 
-def plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path=None, show=True):
+def plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, save_path=None, show=True):
         """
         Plot snapshots of the marginal probability path.
 
@@ -71,7 +75,9 @@ def plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path=None, sh
         Returns
             xx: (B, 1, dim) Final snapshot
         """
-        plt.figure(figsize=(20, 5))
+        plt.figure(figsize=(15, 4))
+
+        labels = gen_parameter_labels(inf_params, N)
 
         for idx in range(xts.shape[1]):
             xx = xts[:,idx,:]
@@ -79,19 +85,18 @@ def plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path=None, sh
 
             plt.subplot(1, num_marginals, idx + 1)
             
-            hist2d_samples(xx.cpu(), range=[[0,1], [0,1]], percentile=100, cmap='Blues')
+            range_ = None if idx == 0 else range_
+            range_ = hist2d_samples(xx.cpu(), range=range_, percentile=100, cmap='Blues')
             
             plt.title(f"Learned, t={t:.2f}")
-            plt.xlabel(f"t0_1")
-            plt.ylabel(f"t0_2")
-
-            plt.xlim(0, 1)
-            plt.ylim(0, 1)
+            plt.xlabel(labels[0])
+            plt.ylabel(labels[1]) if idx == 0 else None
 
         if save_path:
             filepath = os.path.join(save_path, 'marginal_path_snapshots.png')
             plt.savefig(filepath, bbox_inches="tight")
         
+        plt.tight_layout()
         plt.show() if show else None
 
         return xx

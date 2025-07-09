@@ -76,7 +76,7 @@ def evaluation_plots(losses, vector_field, path, device, num_samples, inf_params
     
     # plot snapshots of marginal path if space is 2D
     if snapshots and N * len(inf_params) == 2:
-        plot_snapshots(xts, ts, record_every_idxs, num_marginals, save_path, show_plots)
+        plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, save_path, show_plots)
 
     # corner plot
     if corner_plot:
