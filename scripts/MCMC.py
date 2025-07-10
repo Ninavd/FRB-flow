@@ -6,9 +6,12 @@ import argparse
 import emcee
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
+import yaml 
 
 from multiprocessing import Pool
 from corner import corner 
+from datetime import datetime 
 
 from src.simulator import BurstSimulator, Model
 from src.helpers import plot_posterior_samples
@@ -22,18 +25,15 @@ from src.MCMC.priors import UniformPrior
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
-def main(nwalkers, burn_steps, steps, parallel, save_plots):
+def main(N, inf_params, nwalkers, burn_steps, steps, 
+         parallel, save, show_plots):
     """
     Run MCMC sampler.
     """
     time = np.linspace(0, 1.0, 1000)
-    
-    # TODO: get via args
-    N = 3
-    inf_params = ["t0"]
 
     amp  = [100.0 for _ in range(N)]
-    t0   = np.sort(np.random.rand(N))
+    t0   = np.linspace(0.1, 0.8, N)
     rise = [0.03 for _ in range(N)]
     skew = [5.0 for _ in range(N)]
 
@@ -74,7 +74,30 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
     p0 = [prior_dict[key].sample(nwalkers) for key in inf_params]
     p0 = np.concatenate(p0, axis=1)
 
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_posterior, args=[inf_params, prior_dict, modelparams, simulated_counts], pool=pool)
+    # set up save
+    if save:
+        
+        # make run dir
+        timestamp = datetime.today().strftime('%d-%m_%H:%M:%S')
+        save_dir = "../MCMC_runs/run_" + timestamp
+        os.makedirs(save_dir)
+        
+        # save settings yaml
+        settings = {
+            "N":N,
+            "inf_params":inf_params,
+            "burstparams":burstparams
+        }
+        with open(os.path.join(save_dir, "settings.yaml"), "w") as f:
+            yaml.dump(settings, f, sort_keys=False)
+        
+    sampler = emcee.EnsembleSampler(
+        nwalkers, 
+        ndim, 
+        log_posterior, 
+        args=[inf_params, prior_dict, modelparams, simulated_counts], 
+        pool=pool
+        )
 
     # short run to determine best initial position
     state = sampler.run_mcmc(p0, int(0.5 * steps))
@@ -98,7 +121,7 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
     converged_params, i = 0, 1
     r_threshold = 1.5
 
-    # repeat until convergence
+    # repeat until convergence TODO: use correlation time ipv rhat
     while converged_params < ndim:
 
         state = sampler.run_mcmc(state, burn_steps) 
@@ -135,6 +158,17 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
     # evaluating the results
     samples = sampler.get_chain(flat=True)
 
+    if save:
+        # save pickled sampler
+        filepath = os.path.join(save_dir, 'sampler.pkl')
+        file = open(filepath, "wb")
+        pickle.dump(sampler, file)
+        file.close()
+
+        # save flat chain
+        filepath = os.path.join(save_dir, 'samples.npy')
+        np.save(filepath, samples)
+
     # plot the OG
     plt.figure(figsize=(13, 5))
     plt.subplot(121)
@@ -145,7 +179,7 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
     N_samples = 100
     plot_posterior_samples(N_samples, simulated_counts, samples, inf_params, modelparams)
     plt.tight_layout()
-    plt.savefig("original_vs_posterior_samples.png") if save_plots else None
+    plt.savefig(os.path.join(save_dir, "original_vs_posterior_samples.png")) if save else None
 
     # corner plot (or histogram for 1D)
     var_names = gen_parameter_labels(inf_params, N)
@@ -156,17 +190,17 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
         plot_1d_hist(samples, true_values)
 
     plt.tight_layout()
-    plt.savefig("corner_plot.png") if save_plots else None
+    plt.savefig(os.path.join(save_dir,"corner_plot.png")) if save else None
 
-    plt.show()
+    plt.show() if show_plots else None
 
     # trace plot with arviz
     inference_data = az.from_emcee(sampler, var_names) 
     az.plot_trace(inference_data, compact=True)
     plt.tight_layout()
-    plt.savefig("trace_plot.png") if save_plots else None
+    plt.savefig(os.path.join(save_dir,"trace_plot.png")) if save else None
 
-    plt.show()
+    plt.show() if show_plots else None
 
     # print some stats
     print(az.summary(inference_data))
@@ -176,11 +210,17 @@ def main(nwalkers, burn_steps, steps, parallel, save_plots):
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Run MCMC sampling algorithm")
 
+    parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in sampled data")
+    parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names.", required=True)
+
     parser.add_argument("-w", "--walkers", type=int, default=20,   help="Number of walkers")
     parser.add_argument("-s", "--steps",   type=int, default=1000, help="Number of samples (steps per walker)")
     parser.add_argument("-b", "--burn",    type=int, default=300,  help="burn steps, number of burn-in steps used")
     parser.add_argument("--fast", action="store_true", help="speed up sampling by using parallelization")
-    parser.add_argument("--save_plots", action="store_true", help="save evaluation plots as png in cwd")
+    parser.add_argument("--save", action="store_true", help="save run to h5 file and evaluation plots as png")
+    parser.add_argument("--show_plots", action="store_true", help="show plots at the end of run")
 
     args = parser.parse_args()
-    main(args.walkers, args.burn, args.steps, args.fast, args.save_plots)
+    main(args.ncomp, args.inf_params, args.walkers, args.burn, args.steps, 
+         args.fast, args.save, args.show_plots
+         )
