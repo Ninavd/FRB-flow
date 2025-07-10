@@ -171,4 +171,5 @@ def evaluation_plots(losses, vector_field, path, device,
 
     # plot posterior samples over simulated lightcurve 
     true_flux = model.get_flux()
+    plt.figure()
     plot_posterior_samples(100, x_counts, final_snapshot.cpu().numpy(), inf_params, modelparams, true_flux, show_plots, save_path)
