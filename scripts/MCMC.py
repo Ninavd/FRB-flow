@@ -90,6 +90,9 @@ def main(N, inf_params, nwalkers, burn_steps, steps,
         }
         with open(os.path.join(save_dir, "settings.yaml"), "w") as f:
             yaml.dump(settings, f, sort_keys=False)
+
+        # save simulated lightcurve
+        np.save(os.path.join(save_dir, "simulated_counts.npy"), simulated_counts)
         
     sampler = emcee.EnsembleSampler(
         nwalkers, 
