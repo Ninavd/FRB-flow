@@ -131,7 +131,7 @@ class Trainer(ABC):
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
-                "lambda_"      : lambda_
+                "lambda_"      : [float(l) for l in lambda_]
             },
             "path": {
                 "name"    :self.path.get_config(),
