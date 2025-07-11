@@ -52,7 +52,7 @@ def pick_theta_encoder(encode, inf_params, model, vector_dim):
     
     return None
 
-def main(ncomp: int, inf_params: list[str],
+def main(ncomp: int, inf_params: list[str], lambda_: list[float],
         model: str, encoder: str, encode_tau: bool, encode_theta: bool, combine_mode:str,
         epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
         num_samples: int, show_plots: bool, no_save: bool, job_id: int | None
@@ -66,7 +66,8 @@ def main(ncomp: int, inf_params: list[str],
     # TRAINING
     
     # number of burst components
-    N = ncomp                
+    N = ncomp  
+    lambda_ =  torch.repeat_interleave(torch.tensor(lambda_, device=device), repeats=N)   
 
     print(f"\n Training data will have {N} burst component{'' if N == 1 else 's'} and sample {inf_params} from the prior \n")
 
@@ -124,7 +125,7 @@ def main(ncomp: int, inf_params: list[str],
         vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
-    losses = trainer.train(epochs, device, lr, clip, EMA, False if no_save else True, batch_size, job_id)
+    losses = trainer.train(epochs, device, lr, clip, EMA, False if no_save else True, batch_size, job_id, lambda_=lambda_)
 
     print('\n')
 
@@ -139,7 +140,7 @@ def main(ncomp: int, inf_params: list[str],
 
     evaluation_plots(
         losses, vector_field, path, device, num_samples, 
-        inf_params, N, modelparams, save_path, show_plots
+        inf_params, N, modelparams, lambda_, save_path, show_plots
         )
 
 if __name__=="__main__":
@@ -148,6 +149,7 @@ if __name__=="__main__":
     # training data
     parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in training data")
     parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names to learn from training data.", required=True)
+    parser.add_argument("--lambda_", nargs='+', help="List of linear scaling vectors for inference parameter", type=float, required=True)
 
     # ML model
     parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer")
@@ -188,9 +190,11 @@ if __name__=="__main__":
         print(f"Combine mode argument \'{args.combine_mode}\' invalid, must be in {valid_combine_modes}")
     elif len(set(args.inf_params) & valid_inf_params) != len(args.inf_params):
         print(f"inference parameters argument {args.inf_params} invalid, must be in {valid_inf_params}")
+    elif len(args.inf_params) != len(args.lambda_):
+        print(f"number of inference parameters must match number of scaling factors.")
     else:
         main(
-            args.ncomp, args.inf_params,
+            args.ncomp, args.inf_params, args.lambda_,
             args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode,
             args.epochs, args.batch_size, args.lr, args.clip, args.EMA, 
             args.num_samples, args.show_plots, args.no_save, args.job_id

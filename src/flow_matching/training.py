@@ -56,7 +56,7 @@ class Trainer(ABC):
         # (optional) create run folder and save settings
         if save_checkpoint:
             self.save_path = create_run_folder("../checkpoints", job_id)
-            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path)
+            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path, **kwargs)
         
         # train loop
         progress_bar = tqdm(range(num_epochs))
@@ -110,7 +110,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_):
         """
         Save yaml with training and model settings
         """
@@ -130,7 +130,8 @@ class Trainer(ABC):
                 "learning_rate": lr,
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
-                "optimizer"    : "adam"
+                "optimizer"    : "adam",
+                "lambda_"      : lambda_
             },
             "path": {
                 "name"    :self.path.get_config(),
@@ -148,8 +149,8 @@ class ConditionalFlowMatchingTrainer(Trainer):
     """
     Trainer for unguided flow matching.
     """
-    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
-        super().__init__(model, **kwargs)
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module):
+        super().__init__(model)
         self.path = path
 
     def get_train_loss(self, device, batch_size: int) -> torch.Tensor:
@@ -190,11 +191,11 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
     """
     Trainer for guided flow matching model.
     """
-    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, **kwargs):
-        super().__init__(model, **kwargs)
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module):
+        super().__init__(model)
         self.path = path
 
-    def get_train_loss(self, device: torch.device, batch_size: int) -> torch.Tensor:
+    def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
        
         # samples
         z_batch, y_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
@@ -217,6 +218,9 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         # put data on the doomsday device
         x_batch = x_batch.to(device)
 
+        # scale x0_batch, z_batch and x_batch by lambda
+        x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
+    
         # we take a monte carlo estimate of the loss
         # 1/batch size * sum ((trained vector field) - (target vector field))**2
         predicted_field = self.model(x_batch, t_batch, y_batch)
@@ -231,3 +235,11 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         losses = MSE + field_size_penalty
 
         return torch.mean(losses)
+    
+    def scale_input(self, inputs, lambda_):
+        """
+        scale inference parameters linearly by lambda.
+        """
+        for i, input in enumerate(inputs):
+            inputs[i] = input / lambda_
+        return inputs
