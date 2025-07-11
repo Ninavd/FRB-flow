@@ -33,7 +33,7 @@ def main(N, inf_params, nwalkers, burn_steps, steps,
     time = np.linspace(0, 1.0, 1000)
 
     amp  = [100.0 for _ in range(N)]
-    t0   = np.linspace(0.1, 0.8, N)
+    t0   = [float(t) for t in list(np.linspace(0.1, 0.8, N))]
     rise = [0.03 for _ in range(N)]
     skew = [5.0 for _ in range(N)]
 
