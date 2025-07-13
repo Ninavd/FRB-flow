@@ -38,7 +38,7 @@ class TransformerGuidedField(nn.Module):
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=token_dim,
             nhead=1, 
-            dim_feedforward=256, 
+            dim_feedforward=token_dim, 
             dropout=0.1, 
             activation=nn.GELU(), 
             batch_first=True, 
@@ -134,6 +134,57 @@ def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     pos_encoding[:, 1::2] = torch.cos(position * div_term) 
 
     return pos_encoding  
+
+
+class FRBLightCurveTransformer(nn.Module):
+    """
+    Encodes univariate time series data with transformer encoder. 
+    """
+    def __init__(self,
+                 seq_len: int   = 1000,
+                 d_model: int   = 128,
+                 nhead: int     = 8,
+                 nlayers: int   = 4,
+                 latent_dim: int = 128):
+        
+        super().__init__()
+        
+        self.config = self.make_config(seq_len=seq_len, d_model=d_model, nhead=nhead, nlayers=nlayers, latent_dim=latent_dim)
+
+        self.input_proj = nn.Linear(1, d_model)
+        
+        # learnable positional embedding (seq_len, d_model)
+        self.pos_embed  = nn.Parameter(torch.randn(seq_len, d_model))
+        
+        encoder_layer   = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=4*d_model,
+            batch_first=True,       # (B, L, D)
+            norm_first=True)
+        self.encoder    = nn.TransformerEncoder(encoder_layer, nlayers)
+        self.head       = nn.Linear(d_model, latent_dim)
+
+    def forward(self, x):          # x: (B, L)  
+        x = x.unsqueeze(-1)        # (B,L,1)
+        # x = x.transpose(1, 2)                       
+        h = self.input_proj(x) + self.pos_embed     # add positions  → (B,L,D)
+        h = self.encoder(h)                         # (B,L,D)
+        h = h.mean(dim=1)                           # simple pooling
+        return self.head(h)                         # (B,latent_dim)
+
+    def get_config(self):
+        return self.config
+    
+    def make_config(self, **kwargs):
+        config = {
+            "name": self._get_name(),
+            "init_params":
+            {
+                **kwargs
+            }
+        }
+        return config
 
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
