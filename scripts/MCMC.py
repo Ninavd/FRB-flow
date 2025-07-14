@@ -25,7 +25,7 @@ from src.MCMC.priors import UniformPrior
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
-def main(N, inf_params, nwalkers, burn_steps, steps, 
+def main(N, inf_params, nwalkers, burn_steps, max_steps,
          parallel, save, show_plots):
     """
     Run MCMC sampler.
@@ -103,57 +103,69 @@ def main(N, inf_params, nwalkers, burn_steps, steps,
         )
 
     # short run to determine best initial position
-    state = sampler.run_mcmc(p0, int(0.5 * steps))
+    print("_________________________________________")           
+    print("\n1. RUN TO DETERMINE BEST INITIAL POSITION")
+    print("_________________________________________\n") 
+
+    state = sampler.run_mcmc(p0, burn_steps, progress=True)
     sampler.reset()
 
     # correct walkers with low likelihood (otherwise likely to get stuck)
-    rounded_probs = 1000 * np.floor(state.log_prob / 1000)
-    low_prob_mask = state.log_prob < np.max(rounded_probs) - 0.01 * np.max(rounded_probs)
+    rounded_probs = 10 * np.floor(state.log_prob / 10)
+    low_prob_mask = state.log_prob < np.max(rounded_probs)
 
     variations      = np.ones((sum(low_prob_mask), ndim)) * np.random.uniform(low=0.9, high=1.1, size=(sum(low_prob_mask), ndim))
     most_likely_pos = state.coords[np.argmax(state.log_prob)]
     state.coords[low_prob_mask] = most_likely_pos * variations
 
-    print(f"Repositioned {sum(low_prob_mask)} of {nwalkers} walkers")
+    print(f"\n Repositioned {sum(low_prob_mask)} of {nwalkers} walkers...")
     
     if sum(low_prob_mask) / nwalkers > 0.5:
-        print("ERROR: Had to reposition more than 50% of walkers, increase number of steps")
+        print("ERROR: Had to reposition more than 50% of walkers, increase number of burn steps or re-run")
         return 1
 
-    # burn-in with repositioned walkers 
-    converged_params, i = 0, 1
-    r_threshold = 1.5
-
-    # repeat until convergence TODO: use correlation time ipv rhat
-    while converged_params < ndim:
-
-        state = sampler.run_mcmc(state, burn_steps) 
-
-        # find r_hat of each param with arviz
-        inference_data = az.from_emcee(sampler) 
-        r_hats = az.rhat(inference_data)
-        _, r_hats = az.sel_utils.xarray_to_ndarray(r_hats)
-
-        # number of converged parameters
-        converged_params = np.sum(r_hats < r_threshold)
-
-        # log
-        print(f"Burn-in round {i} finished", end='\r')
-        i += 1
-
-        sampler.reset()
-
-        if i > 50:
-            raise TimeoutError(
-                "More than 50 rounds of burn-in executed without reaching convergence. Try increasing burn steps"
-                )
-
-    print("\n")
+    # burn-in with repositioned walkers
+    print("_____________________________")           
+    print("\n          2. BURN-IN")
+    print("_____________________________\n") 
+    state = sampler.run_mcmc(state.coords, 500, progress=True)
     sampler.reset()
 
-    # running the sampler
-    sampler.run_mcmc(state, steps, progress=True)
+    # run until convergence
+    print("_____________________________")           
+    print("\n         3. FINAL RUN")
+    print("_____________________________\n") 
 
+    old_tau = np.inf
+    N_checks = 0
+    for state in sampler.sample(state.coords, iterations=max_steps, progress=True):
+        
+        # only check every 100 steps
+        if sampler.iteration % 100 != 0:
+            continue
+
+        # using tol=0 means that we'll always get an estimate even
+        # if it isn't trustworthy
+        tau = sampler.get_autocorr_time(tol=0)
+
+        # Check convergence (from https://emcee.readthedocs.io/en/stable/tutorials/monitor/)
+        # we assume convergence if the chain is longer than 100 x the estimated autocorrelation time 
+        # and if this estimate changed by less than 1%
+        converged = np.all(tau * 100 < sampler.iteration)
+        converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
+        N_checks += 1
+        if converged:
+            break
+
+        old_tau = tau
+        
+        # convergence failed
+        if sampler.iteration == max_steps and not converged:
+            print("ConvergenceError: Convergence condition not satisfied within {max_n} steps. Try increasing the max_steps argument or re-run.")
+            return
+
+    print(f"\n -> Converged after {sampler.iteration} steps \n")
+  
     if parallel:
         pool.close()
         pool.join()
@@ -217,13 +229,14 @@ if __name__=="__main__":
     parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names.", required=True)
 
     parser.add_argument("-w", "--walkers", type=int, default=20,   help="Number of walkers")
-    parser.add_argument("-s", "--steps",   type=int, default=1000, help="Number of samples (steps per walker)")
-    parser.add_argument("-b", "--burn",    type=int, default=300,  help="burn steps, number of burn-in steps used")
+    parser.add_argument("--max_steps",   type=int, default=10_000, help="Maximum number of iterations before convergence")
+    parser.add_argument("-b", "--burn",    type=int, default=1500,  help="burn steps, number of burn-in steps used")
     parser.add_argument("--fast", action="store_true", help="speed up sampling by using parallelization")
-    parser.add_argument("--save", action="store_true", help="save run to h5 file and evaluation plots as png")
+    parser.add_argument("--save", action="store_true", help="save run to files and evaluation plots as png")
     parser.add_argument("--show_plots", action="store_true", help="show plots at the end of run")
 
     args = parser.parse_args()
-    main(args.ncomp, args.inf_params, args.walkers, args.burn, args.steps, 
-         args.fast, args.save, args.show_plots
-         )
+
+    main(args.ncomp, args.inf_params, args.walkers, args.burn, args.max_steps,
+        args.fast, args.save, args.show_plots
+        )
