@@ -5,6 +5,7 @@ import torch
 import torch.distributions as D
 
 from src.flow_matching.simulator import Model
+from src.flow_matching.helpers import choose_device
 
 class Sampleable(ABC):
     """
@@ -127,6 +128,7 @@ class Posterior(Sampleable):
         self.model_params = model_params # fixed burst parameters
         self.inf_params = inf_params
         self.prior = prior
+        self.device = choose_device()
     
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
         """
@@ -160,7 +162,7 @@ class Posterior(Sampleable):
         
         # simulate noisy light curve
         model = model.get_flux()
-        model = model.to('cuda') if torch.cuda.is_available() else model
+        model = model.to(self.device)
         x_counts = torch.poisson(model)
 
         return torch.Tensor(x_counts)
