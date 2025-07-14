@@ -7,7 +7,7 @@ from copy import deepcopy
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder
 from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
 
 import torch
@@ -34,6 +34,10 @@ def pick_timeseries_encoder(type):
     elif type == "T":
         latent_dim = 128
         time_seq_encoder = FRBLightCurveTransformer()
+
+    elif type == "UNET":
+            latent_dim = 64
+            time_seq_encoder = UNetEncoder()
 
     else:
         latent_dim = 1000
@@ -158,7 +162,7 @@ if __name__=="__main__":
     # ML model
     parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer")
 
-    parser.add_argument("-c", "--encoder", type=str, default="MLP", help="Time series encoder (CNN or THIN or MLP or or T or NULL)")
+    parser.add_argument("-c", "--encoder", type=str, default="MLP", help="Time series encoder (CNN or THIN or MLP or T or UNET or NULL)")
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for tau (flow matching time)")
  
@@ -181,7 +185,7 @@ if __name__=="__main__":
     args = parser.parse_args()
 
     valid_models = ["MLP", "T"]
-    valid_encoders = ["CNN", "THIN", "MLP", "NULL", "T"]
+    valid_encoders = ["CNN", "THIN", "MLP", "NULL", "T", "UNET"]
     valid_combine_modes = ["GLU", "concat"]
     valid_inf_params = {"t0", "amp", "skew", "rise"}
 

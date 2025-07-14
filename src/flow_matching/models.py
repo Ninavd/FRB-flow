@@ -1,6 +1,7 @@
 from typing import List
 import torch 
 import torch.nn as nn
+import torch.nn.functional as F
 from src.flow_matching.helpers import build_mlp
 
 class MLPVectorField(nn.Module):
@@ -273,7 +274,91 @@ def fourier_embedding(tau, latent_dim):
     wt = tau * freqs
     return torch.cat([torch.sin(wt), torch.cos(wt)], dim=-1)
 
+class UNetEncoder(nn.Module):
+    """
+    Encoder part of U-Net - maintains fine details through skip connections
+    """
 
+    def __init__(self, seq_len=1000, latent_dim=64):
+        super().__init__()
+
+        self.config = self.make_config(seq_len=seq_len, latent_dim=latent_dim)
+
+        # Encoder path - gentler downsampling
+        self.enc1 = nn.Conv1d(1, 32, kernel_size=7, stride=1, padding=3)
+        self.enc2 = nn.Conv1d(32, 64, kernel_size=5, stride=2, padding=2)  # L/2
+        self.enc3 = nn.Conv1d(64, 128, kernel_size=5, stride=2, padding=2)  # L/4
+        self.enc4 = nn.Conv1d(128, 256, kernel_size=3, stride=2, padding=1)  # L/8
+
+        # Process at multiple scales
+        self.process1 = nn.Conv1d(32, 32, kernel_size=3, padding=1)
+        self.process2 = nn.Conv1d(64, 64, kernel_size=3, padding=1)
+        self.process3 = nn.Conv1d(128, 128, kernel_size=3, padding=1)
+
+        # Multi-scale feature aggregation
+        self.scale_proj1 = nn.Sequential(
+            nn.AdaptiveAvgPool1d(16),
+            nn.Conv1d(32, 64, kernel_size=1)
+        )
+        self.scale_proj2 = nn.Sequential(
+            nn.AdaptiveAvgPool1d(16),
+            nn.Conv1d(64, 64, kernel_size=1)
+        )
+        self.scale_proj3 = nn.Sequential(
+            nn.AdaptiveAvgPool1d(16),
+            nn.Conv1d(128, 64, kernel_size=1)
+        )
+        self.scale_proj4 = nn.Sequential(
+            nn.AdaptiveAvgPool1d(16),
+            nn.Conv1d(256, 64, kernel_size=1)
+        )
+
+        # Final projection
+        self.final = nn.Sequential(
+            nn.Linear(64 * 16 * 4, 256),
+            nn.ReLU(),
+            nn.Linear(256, latent_dim)
+        )
+
+    def forward(self, x):  # x: (B, L)
+        x = x.unsqueeze(1) # (B, 1, L)
+
+        # Encode with feature preservation
+        h1 = F.relu(self.enc1(x))  # (B, 32, L)
+        h1_proc = self.process1(h1)
+
+        h2 = F.relu(self.enc2(h1))  # (B, 64, L/2)
+        h2_proc = self.process2(h2)
+
+        h3 = F.relu(self.enc3(h2))  # (B, 128, L/4)
+        h3_proc = self.process3(h3)
+
+        h4 = F.relu(self.enc4(h3))  # (B, 256, L/8)
+
+        # Multi-scale aggregation
+        feat1 = self.scale_proj1(h1_proc).flatten(1)
+        feat2 = self.scale_proj2(h2_proc).flatten(1)
+        feat3 = self.scale_proj3(h3_proc).flatten(1)
+        feat4 = self.scale_proj4(h4).flatten(1)
+
+        # Concatenate multi-scale features
+        features = torch.cat([feat1, feat2, feat3, feat4], dim=1)
+
+        return self.final(features)
+
+    def get_config(self):
+        return self.config
+    
+    def make_config(self, **kwargs):
+        config = {
+            "name": self._get_name(),
+            "init_params":
+            {
+                **kwargs
+            }
+        }
+        return config
+    
 if __name__=="__main__":
     import numpy as np
     # encoder = FRBLightCurveCNN()
