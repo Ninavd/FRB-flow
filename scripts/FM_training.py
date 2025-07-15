@@ -156,7 +156,7 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
 
     evaluation_plots(
         losses, vector_field, path, device, num_samples, 
-        inf_params, N, modelparams, lambda_, save_path, show_plots
+        inf_params, N, modelparams, lambda_, mean, std, save_path, show_plots
         )
 
 if __name__=="__main__":
