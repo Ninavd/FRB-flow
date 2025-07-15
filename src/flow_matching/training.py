@@ -29,6 +29,16 @@ class Trainer(ABC):
     def get_optimizer(self, lr: float):
         return torch.optim.Adam(self.model.parameters(), lr=lr)
 
+    def init_lr_scheduler(self, opt, lr, lr_cutoff, warm_up_iters):
+        # linearly increase multiplier to 1.0
+        lr_start = 1e-8
+        start_factor = lr_start / lr  
+        slope = (1.0 - start_factor) / warm_up_iters 
+        lin_lr_scheduler = torch.optim.lr_scheduler.LambdaLR(opt, lambda epoch : (epoch+1) * slope) 
+        cos_lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, lr_cutoff - warm_up_iters, eta_min=1e-6)
+
+        return torch.optim.lr_scheduler.SequentialLR(opt, [lin_lr_scheduler, cos_lr_scheduler], milestones=[warm_up_iters])
+
     def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, clip: float=None, use_ema: bool=True, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
         # report model size
         size_b = model_size_b(self.model)
@@ -47,8 +57,10 @@ class Trainer(ABC):
             )
 
         opt = self.get_optimizer(lr)
-        lr_cutoff = int(0.9 * num_epochs)
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, lr_cutoff, eta_min=1e-6)
+
+        warm_up_iters = int(0.1 * num_epochs)
+        lr_cutoff     = int(0.95 * num_epochs) 
+        lr_scheduler  = self.init_lr_scheduler(opt, lr, lr_cutoff, warm_up_iters)
         
         self.model.train()
         losses = np.zeros(num_epochs)
