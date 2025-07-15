@@ -26,6 +26,16 @@ def model_size_b(model: nn.Module) -> int:
         size += buf.nelement() * buf.element_size()
     return size
 
+def get_sample_mean_std(prior, num_samples: int, device=None):
+    """"
+    Get estimate of sample mean and standard deviation
+    based on num_samples, f.e. for standardization. 
+    """
+    samples = prior.sample(num_samples).to(device)
+    mean =  torch.mean(samples, dim=0)
+    std = torch.std(samples, dim=0)
+    return mean, std
+
 def build_mlp(dims: List[int], activation: Type[nn.Module] = nn.SiLU):
     """
     Build multilayer perceptron and return it.

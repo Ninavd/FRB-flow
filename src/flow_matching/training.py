@@ -110,7 +110,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_, mean, std):
         """
         Save yaml with training and model settings
         """
@@ -131,7 +131,9 @@ class Trainer(ABC):
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
-                "lambda_"      : [float(l) for l in lambda_]
+                "lambda_"      : [float(l) for l in lambda_],
+                "sample_mean"  : [float(m) for m in mean],
+                "sample_std"   : [float(s) for s in std]
             },
             "path": {
                 "name"    :self.path.get_config(),
@@ -236,10 +238,11 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
         return torch.mean(losses)
     
-    def scale_input(self, inputs, lambda_):
+    def scale_input(self, inputs, lambda_, mean, std):
         """
         scale inference parameters linearly by lambda.
         """
         for i, input in enumerate(inputs):
             inputs[i] = input / lambda_
+            inputs[i] = (input - mean) / std
         return inputs

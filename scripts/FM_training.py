@@ -13,7 +13,7 @@ from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveT
 import torch
 
 from src.flow_matching.plotting import evaluation_plots
-from src.flow_matching.helpers import choose_device, build_mlp
+from src.flow_matching.helpers import choose_device, build_mlp, get_sample_mean_std
 
 def pick_timeseries_encoder(type):
     """
@@ -75,7 +75,9 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     
     # number of burst components
     N = ncomp  
-    lambda_ =  torch.repeat_interleave(torch.tensor(lambda_, device=device), repeats=N)   
+    if lambda_ is None:
+        lambda_ = [1 for _ in range(len(inf_params))]
+    lambda_ = torch.repeat_interleave(torch.tensor(lambda_, device=device), repeats=N)   
 
     print(f"\n Training data will have {N} burst component{'' if N == 1 else 's'} and sample {inf_params} from the prior \n")
 
@@ -119,6 +121,9 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
         p_data   = posterior
     )
 
+    # for standardization
+    mean, std = get_sample_mean_std(prior, 10000, device=device)
+
     # dimension of vector field
     dim = N * len(inf_params)
 
@@ -133,7 +138,10 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
         vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
-    losses = trainer.train(epochs, device, lr, clip, EMA, False if no_save else True, batch_size, job_id, lambda_=lambda_)
+    losses = trainer.train(
+        epochs, device, lr, clip, EMA, False if no_save else True, 
+        batch_size, job_id, lambda_=lambda_, mean=mean, std=std
+        )
 
     print('\n')
 
@@ -157,7 +165,7 @@ if __name__=="__main__":
     # training data
     parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in training data")
     parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names to learn from training data.", required=True)
-    parser.add_argument("--lambda_", nargs='+', help="List of linear scaling vectors for inference parameter", type=float, required=True)
+    parser.add_argument("--lambda_", nargs='+', help="List of linear scaling vectors for inference parameter", type=float)
 
     # ML model
     parser.add_argument("-m","--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer")
@@ -198,7 +206,7 @@ if __name__=="__main__":
         print(f"Combine mode argument \'{args.combine_mode}\' invalid, must be in {valid_combine_modes}")
     elif len(set(args.inf_params) & valid_inf_params) != len(args.inf_params):
         print(f"inference parameters argument {args.inf_params} invalid, must be in {valid_inf_params}")
-    elif len(args.inf_params) != len(args.lambda_):
+    elif args.lambda_ and len(args.inf_params) != len(args.lambda_):
         print(f"number of inference parameters must match number of scaling factors.")
     else:
         main(
