@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +45,9 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
     # plot the data
     time = modelparams["time"]
     plt.plot(time, simulated_counts, 'k-', alpha=0.2, label="data")
+    
+    # prevents changing the original modelparams
+    modelparams_copy = deepcopy(modelparams)
 
     for _ in range(N):
 
@@ -52,8 +56,8 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
         random_sample = samples[random_index]
 
         # generate noise-free curve from random sample
-        modelparams = update_modelparams(random_sample, inf_params, modelparams)
-        model = Model(**modelparams).get_flux()
+        modelparams_copy = update_modelparams(random_sample, inf_params, modelparams_copy)
+        model = Model(**modelparams_copy).get_flux()
 
         # plot the sample
         plt.plot(time, model, alpha=0.3)
