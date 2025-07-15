@@ -37,7 +37,7 @@ class TransformerGuidedField(nn.Module):
 
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=token_dim,
-            nhead=1, 
+            nhead=4, 
             dim_feedforward=token_dim, 
             dropout=0.1, 
             activation=nn.GELU(), 
@@ -49,7 +49,7 @@ class TransformerGuidedField(nn.Module):
         
         self.encoder = nn.TransformerEncoder(
             encoder_layer, 
-            num_layers=3
+            num_layers=6
             )
 
         # tokens pass through down projection independently
