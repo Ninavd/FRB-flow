@@ -31,7 +31,7 @@ def update_modelparams(sample, inf_params, modelparams):
         modelparams['burstparams'][key] = sample[start:stop]
     return modelparams
 
-def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams, true_flux=None, show=False, save_path=None):
+def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams, true_flux=None, show=False, save_path=None, title=None):
     """
     Overlay samples from posterior on simulated curve.
 
@@ -65,7 +65,7 @@ def plot_posterior_samples(N, simulated_counts, samples, inf_params, modelparams
     if true_flux is not None:
         plt.plot(np.linspace(0, 1, len(true_flux)), true_flux, 'r--', linewidth=1, label="ground-truth")
     
-    plt.title(f'{N} posterior samples')
+    plt.title(f'{N} posterior samples' if not title else title)
     plt.legend()
     plt.tight_layout()
 
