@@ -2,7 +2,8 @@ import torch.nn as nn
 import torch 
 
 from tqdm import tqdm
-from src.flow_matching.helpers import build_mlp, choose_device
+from src.flow_matching.helpers import choose_device
+from src.flow_matching.models import BinaryClassifier 
 
 def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
     """
@@ -39,7 +40,7 @@ def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
 
     # put everything on the same device
     device = choose_device()    
-    classifier       = BinaryClassifier(dim).to(device)
+    classifier       = BinaryClassifier(dim, hiddens=[64, 64, 32, 16], outputs=1).to(device)
     training_set     = training_set.to(device)
     training_targets = training_targets.to(device)
     test_set         = test_set.to(device)
@@ -109,17 +110,7 @@ def accuracy(outputs, targets):
     return 100 * correct / len(targets)
 
 
-class BinaryClassifier(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
 
-        self.net = build_mlp(dims=[dim, 64, 64, 32, 16, 1])
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x): # x: (bs, dim)
-        x = self.net(x)
-        x = self.sigmoid(x)
-        return x          # (bs, 1)
     
 if __name__=="__main__":
     # dummy data
