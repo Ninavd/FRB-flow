@@ -4,7 +4,7 @@ import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.models import fourier_embedding
+from src.flow_matching.models import fourier_embedding, BinaryClassifier 
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
@@ -51,6 +51,14 @@ class TransformerGuidedField(nn.Module):
             encoder_layer, 
             num_layers=6
             )
+        
+        # discrete prob model for number of bursts  
+        self.N_max = dim // len(inf_params)
+        self.N_classifier = BinaryClassifier(
+            inputs=self.time_dim, 
+            hiddens=[self.time_dim // 2, self.time_dim // 2, self.time_dim // 4, self.time_dim // 4], 
+            outputs=self.N_max
+            )
 
         # tokens pass through down projection independently
         burst_params = len(inf_params)  
@@ -69,31 +77,39 @@ class TransformerGuidedField(nn.Module):
         y   = self.time_seq_encoder(y)
         tau = self.tau_encoder(tau, self.tau_dim) 
 
+        # find p(N) to do N ~ p(N)
+        p_N = self.N_classifier(y) # (bs, N_max)
+
+        # sample N from classifier result
+        N = torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
+        
+        # create mask that selects first N tokens
+        mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N # mask: (bs, N_max)
+
         # split up x into N chunks of burstparams
         bs, dim = x.shape
-        N_bursts = x.shape[-1] // len(self.inf_params)
-        x = x.reshape(bs, N_bursts, dim // N_bursts) # (bs, dim) --> (bs, N, dim/N) TODO: only works when there's one param type 
-
+        x = x.reshape(bs, self.N_max, dim // self.N_max) # (bs, dim) --> (bs, N, dim/N) 
+       
         # put chunks of x through encoder (independently) 
         x   = self.theta_encoder(x) # (bs, N_bursts, N_params) (think this should be fine, MLP takes final dimension as input (?))
         
         # prepare y and tau to become part of token vectors (bs, N_tokens, token_dim) N_tokens = N_bursts
         y = y.unsqueeze(1)            # (bs, ≥1)    -> (bs, 1, ≥1)
-        y = y.repeat(1, N_bursts, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
+        y = y.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         tau = tau.unsqueeze(1)                # (bs, ≥1)    -> (bs, 1, ≥1)
-        tau = tau.repeat(1, N_bursts, 1)      # (bs, 1, ≥1) -> (bs, N, ≥1)
+        tau = tau.repeat(1, self.N_max, 1)      # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         # encoder input (bs, N_tokens, token_dim)
         tokens = torch.cat([y, x, tau], dim=-1) 
         _, _, token_dim = tokens.shape
 
         # add positional encoding
-        positional_encoding = sinusoidal_PE(N_bursts, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
+        positional_encoding = sinusoidal_PE(self.N_max, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
         tokens += positional_encoding
 
         # go through encoder and project down
-        encoder_output = self.encoder(tokens)   # (bs, N, latent_dim)
+        encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
         down_projected = self.down_proj(encoder_output) # (bs, N, N_inf_params)
         final_output    = down_projected.view(bs, dim) # (bs, N * N_inf_params)
 
