@@ -358,7 +358,19 @@ class UNetEncoder(nn.Module):
             }
         }
         return config
-    
+
+class BinaryClassifier(nn.Module):
+    def __init__(self, inputs, hiddens, outputs):
+        super().__init__()
+
+        self.net = build_mlp(dims=[inputs] + hiddens + [outputs])
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x): # x: (bs, dim)
+        x = self.net(x)
+        x = self.sigmoid(x)
+        return x          # (bs, 1)
+
 if __name__=="__main__":
     import numpy as np
     # encoder = FRBLightCurveCNN()
