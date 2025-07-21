@@ -3,7 +3,7 @@ import torch
 
 from tqdm import tqdm
 from src.flow_matching.helpers import choose_device
-from src.flow_matching.models import BinaryClassifier 
+from src.flow_matching.models import GenericClassifier 
 
 def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
     """
@@ -40,7 +40,7 @@ def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
 
     # put everything on the same device
     device = choose_device()    
-    classifier       = BinaryClassifier(dim, hiddens=[64, 64, 32, 16], outputs=1).to(device)
+    classifier       = GenericClassifier(dim, hiddens=[64, 64, 32, 16], outputs=1).to(device)
     training_set     = training_set.to(device)
     training_targets = training_targets.to(device)
     test_set         = test_set.to(device)
@@ -110,8 +110,6 @@ def accuracy(outputs, targets):
     return 100 * correct / len(targets)
 
 
-
-    
 if __name__=="__main__":
     # dummy data
     N = 10000

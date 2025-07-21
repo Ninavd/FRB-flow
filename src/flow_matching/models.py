@@ -359,16 +359,16 @@ class UNetEncoder(nn.Module):
         }
         return config
 
-class BinaryClassifier(nn.Module):
+class GenericClassifier(nn.Module):
     def __init__(self, inputs, hiddens, outputs):
         super().__init__()
 
         self.net = build_mlp(dims=[inputs] + hiddens + [outputs])
-        self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=outputs) if outputs > 1 else nn.Sigmoid()
 
     def forward(self, x): # x: (bs, dim)
         x = self.net(x)
-        x = self.sigmoid(x)
+        x = self.softmax(x)
         return x          # (bs, 1)
 
 if __name__=="__main__":

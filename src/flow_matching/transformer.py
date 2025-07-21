@@ -4,7 +4,7 @@ import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.models import fourier_embedding, BinaryClassifier 
+from src.flow_matching.models import fourier_embedding, GenericClassifier 
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
@@ -54,7 +54,7 @@ class TransformerGuidedField(nn.Module):
         
         # discrete prob model for number of bursts  
         self.N_max = dim // len(inf_params)
-        self.N_classifier = BinaryClassifier(
+        self.N_classifier = GenericClassifier(
             inputs=self.time_dim, 
             hiddens=[self.time_dim // 2, self.time_dim // 2, self.time_dim // 4, self.time_dim // 4], 
             outputs=self.N_max
