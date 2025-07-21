@@ -161,7 +161,7 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         
         # convergence failed
         if sampler.iteration == max_steps and not converged:
-            print("ConvergenceError: Convergence condition not satisfied within {max_n} steps. Try increasing the max_steps argument or re-run.")
+            print(f"\n ConvergenceError: Convergence condition not satisfied within {max_steps} steps. Try increasing the max_steps argument or re-run.")
             return
 
     print(f"\n -> Converged after {sampler.iteration} steps \n")
