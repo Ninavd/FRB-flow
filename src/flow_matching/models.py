@@ -364,7 +364,7 @@ class GenericClassifier(nn.Module):
         super().__init__()
 
         self.net = build_mlp(dims=[inputs] + hiddens + [outputs])
-        self.softmax = nn.Softmax(dim=outputs) if outputs > 1 else nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=1) if outputs > 1 else nn.Sigmoid()
 
     def forward(self, x): # x: (bs, dim)
         x = self.net(x)
