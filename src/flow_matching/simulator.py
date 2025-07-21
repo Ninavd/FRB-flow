@@ -4,7 +4,7 @@ class Model:
 
     def __init__(self, time, ncomp, burstparams, ybkg=0.0):
         self.time = time
-        self.n_components = ncomp
+        self.n_components = ncomp # (bs, 1)
         
         self.t0 = burstparams['t0']
         self.amp = burstparams['amp']
@@ -26,9 +26,15 @@ class Model:
 
         self.time = torch.broadcast_to(self.time, (bs, len(time)))
         
-        if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*ncomp:
-            raise ValueError("`burstparams` must contain all burst model parameters!")
+        # set amplitude of components > N to zero 
+        # allows for batched generation of curves with variable number of components
+        mask = torch.arange(1, n + 1).expand(bs, n) > self.n_components
+        self.amp[mask] = 0
 
+        if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*n:
+            raise ValueError("`burstparams` must contain all burst model parameters!")
+        
+        self.N_max = n
         self.flux = self.lightcurve_model()
 
     def single_component(self, k):
@@ -84,7 +90,7 @@ class Model:
         # reset the model
         flux = torch.zeros_like(self.time)
         
-        for k in range(self.n_components):
+        for k in range(self.N_max):
             flux += self.single_component(k)
             
         flux += self.ybkg

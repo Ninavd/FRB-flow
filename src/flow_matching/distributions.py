@@ -63,8 +63,21 @@ class UniformPrior(Sampleable):
                 "dim"          :self.dim
             }           
         }
-        return config
+        return config  
+
+class DiscreteUniform(Sampleable):
+    """
+    One-dimensional discrete uniform distribution.
+    """
     
+    def __init__(self, low: int, high: int):
+        super().__init__()
+        self.low = low 
+        self.high = high
+
+    def sample(self, num_samples: int):
+        return torch.randint(self.low, self.high + 1, (num_samples, 1))
+        
 class CompositePrior(Sampleable):
     def __init__(self, priors: dict[UniformPrior]):
         self.priors = priors
@@ -128,6 +141,8 @@ class Posterior(Sampleable):
         self.model_params = model_params # fixed burst parameters
         self.inf_params = inf_params
         self.prior = prior
+        N_max = model_params['ncomp']
+        self.N_prior = DiscreteUniform(1, N_max)
         self.device = choose_device()
     
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
@@ -143,19 +158,21 @@ class Posterior(Sampleable):
 
         burstparams = self.model_params['burstparams']
         burstparams = self.edit_burstparams(burstparams, self.prior.samples_as_dict(prior_samples))
-
-        simulations = self.light_curve_sample(burstparams=burstparams)
+        
+        ncomp = self.N_prior.sample((num_samples))
+        
+        simulations = self.light_curve_sample(burstparams=burstparams, ncomp=ncomp)
 
         return prior_samples, simulations
     
-    def light_curve_sample(self, burstparams) -> torch.Tensor:
+    def light_curve_sample(self, burstparams, ncomp) -> torch.Tensor:
         """
         Simulates lightcurve for given parameters.
         """
         # initialize burst model
         model = Model(
             time=self.model_params['time'], 
-            ncomp=self.model_params['ncomp'], 
+            ncomp=ncomp, 
             ybkg=self.model_params['ybkg'], 
             burstparams=burstparams
             )
