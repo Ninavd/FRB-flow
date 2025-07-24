@@ -83,7 +83,7 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
 
     # define the priors
     PRIORS = {
-        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
+        "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
         "amp" : UniformPrior(x_min=10,   x_max=300, log=False,  enforce_order=False, dim=N),
         "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
