@@ -113,7 +113,7 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
         'ybkg': YBKG
     }
 
-    prior     = CompositePrior(prior_dict)
+    prior     = CompositePrior(prior_dict, device=device)
     posterior = Posterior(deepcopy(modelparams), inf_params, prior)
 
     path = GuidedLinearProbabilityPath(

@@ -2,14 +2,14 @@ import torch
 
 class Model:
 
-    def __init__(self, time, ncomp, burstparams, ybkg=0.0):
-        self.time = time
-        self.n_components = ncomp # (bs, 1)
+    def __init__(self, time, ncomp, burstparams, ybkg=0.0, device=None):
+        self.time = time.to(device)
+        self.n_components = ncomp.to(device) # (bs, 1)
         
-        self.t0 = burstparams['t0']
-        self.amp = burstparams['amp']
-        self.rise = burstparams['rise']
-        self.skew = burstparams['skew']
+        self.t0 = burstparams['t0'].to(device)
+        self.amp = burstparams['amp'].to(device)
+        self.rise = burstparams['rise'].to(device)
+        self.skew = burstparams['skew'].to(device)
         self.ybkg = ybkg
 
         # find desired shape (bs, n)
@@ -28,7 +28,7 @@ class Model:
         
         # set amplitude of components > N to zero 
         # allows for batched generation of curves with variable number of components
-        mask = torch.arange(1, n + 1).expand(bs, n) > self.n_components
+        mask = torch.arange(1, n + 1, device=device).expand(bs, n) > self.n_components
         self.amp[mask] = 0
 
         if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*n:

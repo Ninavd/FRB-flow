@@ -24,12 +24,13 @@ class Sampleable(ABC):
 
 class UniformPrior(Sampleable):
 
-    def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int):
+    def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int, device=None):
         self.x_min = x_min
         self.x_max = x_max
         self.log = log
         self.enforce_order = enforce_order
         self.dim = dim
+        self.device = device
 
     def sample(self, num_samples: int) -> torch.Tensor:
         """
@@ -41,9 +42,9 @@ class UniformPrior(Sampleable):
         shape = (num_samples, self.dim)
         
         if not self.log:
-            samples = (self.x_max - self.x_min) * torch.rand(size=shape) + self.x_min 
+            samples = (self.x_max - self.x_min) * torch.rand(size=shape, device=self.device) + self.x_min 
         else:
-            samples = torch.exp((np.log(self.x_max) - np.log(self.x_min)) * torch.rand(size=shape) + np.log(self.x_min))
+            samples = torch.exp((np.log(self.x_max) - np.log(self.x_min)) * torch.rand(size=shape, device=self.device) + np.log(self.x_min))
         
         if self.enforce_order:
             sorted_samples, _ = torch.sort(samples, dim=1)
@@ -70,18 +71,25 @@ class DiscreteUniform(Sampleable):
     One-dimensional discrete uniform distribution.
     """
     
-    def __init__(self, low: int, high: int):
+    def __init__(self, low: int, high: int, device=None):
         super().__init__()
         self.low = low 
         self.high = high
+        self.device = device
 
     def sample(self, num_samples: int):
-        return torch.randint(self.low, self.high + 1, (num_samples, 1))
+        return torch.randint(self.low, self.high + 1, (num_samples, 1), device=self.device)
         
 class CompositePrior(Sampleable):
-    def __init__(self, priors: dict[UniformPrior]):
+    def __init__(self, priors: dict[UniformPrior], device=None):
         self.priors = priors
         self.dim = sum([priors[key].dim for key in priors])
+        self.device = device 
+        self.set_prior_device()
+    
+    def set_prior_device(self):
+        for prior in self.priors.values():
+            prior.device = self.device
 
     def sample(self, num_samples):
         """
@@ -91,7 +99,7 @@ class CompositePrior(Sampleable):
         Returns: 
             torch.Tensor: (bs, dim)
         """
-        samples = torch.zeros((num_samples, self.dim))
+        samples = torch.zeros((num_samples, self.dim), device=self.device)
         cursor = 0
         for key in self.priors:
             prior = self.priors[key]
@@ -142,9 +150,9 @@ class Posterior(Sampleable):
         self.inf_params = inf_params
         self.prior = prior
         N_max = model_params['ncomp']
-        self.N_prior = DiscreteUniform(1, N_max)
-        self.device = choose_device()
-    
+        self.device = prior.device
+        self.N_prior = DiscreteUniform(1, N_max, device=self.device)
+
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
         """
         Args:
@@ -174,15 +182,15 @@ class Posterior(Sampleable):
             time=self.model_params['time'], 
             ncomp=ncomp, 
             ybkg=self.model_params['ybkg'], 
-            burstparams=burstparams
+            burstparams=burstparams,
+            device=self.device
             )
         
         # simulate noisy light curve
         model = model.get_flux()
-        model = model.to(self.device)
         x_counts = torch.poisson(model)
 
-        return torch.Tensor(x_counts)
+        return x_counts
     
     def edit_burstparams(self, burstparams, prior_sample):
         """
