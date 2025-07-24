@@ -5,7 +5,6 @@ import torch
 import torch.distributions as D
 
 from src.flow_matching.simulator import Model
-from src.flow_matching.helpers import choose_device
 
 class Sampleable(ABC):
     """
@@ -41,10 +40,7 @@ class UniformPrior(Sampleable):
         """
         shape = (num_samples, self.dim)
         
-        if not self.log:
-            samples = (self.x_max - self.x_min) * torch.rand(size=shape, device=self.device) + self.x_min 
-        else:
-            samples = torch.exp((np.log(self.x_max) - np.log(self.x_min)) * torch.rand(size=shape, device=self.device) + np.log(self.x_min))
+        samples = (self.x_max - self.x_min) * torch.rand(size=shape, device=self.device) + self.x_min 
         
         if self.enforce_order:
             sorted_samples, _ = torch.sort(samples, dim=1)

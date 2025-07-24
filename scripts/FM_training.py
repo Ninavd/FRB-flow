@@ -10,6 +10,7 @@ from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder
 from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
 
+import numpy as np
 import torch
 
 from src.flow_matching.plotting import evaluation_plots
@@ -84,8 +85,8 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     # define the priors
     PRIORS = {
         "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
-        "amp" : UniformPrior(x_min=10,   x_max=300, log=False,  enforce_order=False, dim=N),
-        "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
+        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
+        "rise": UniformPrior(x_min=1e-3, x_max=0.6, log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
     }
 
@@ -95,14 +96,14 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     # standard burst parameter values when fixed
     TIME = torch.linspace(0, 1.0, 1000)
     YBKG = 5.0
-    AMP  = 100.0
+    AMP  = 100
     RISE = 0.03
     SKEW = 5
     
     burstparams = {
         't0'   : torch.linspace(0.1, 0.8, N),
-        'amp'  : torch.Tensor([AMP]).repeat(N),
-        'rise' : torch.Tensor([RISE]).repeat(N),
+        'amp'  : torch.Tensor([np.log10(AMP)]).repeat(N),
+        'rise' : torch.Tensor([np.log10(RISE)]).repeat(N),
         'skew' : torch.Tensor([SKEW]).repeat(N)
     }
 

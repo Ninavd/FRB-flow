@@ -17,6 +17,10 @@ class Model:
             if len(value.shape) == 2:
                 bs, n = value.shape 
                 break
+        
+        # transform log rise and log amp
+        self.rise = torch.pow(torch.ones_like(self.rise) * 10, self.rise)
+        self.amp = torch.pow(torch.ones_like(self.amp) * 10, self.amp)
 
         # expand potentially fixed params
         self.t0 = torch.broadcast_to(self.t0, (bs, n)) if self.t0.shape != (bs, n) else self.t0

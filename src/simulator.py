@@ -11,8 +11,8 @@ class Model:
         self.n_components = ncomp
         
         self.t0 = burstparams['t0']
-        self.amp = burstparams['amp']
-        self.rise = burstparams['rise']
+        self.amp = np.power(np.ones_like(self.t0) * 10, burstparams['amp'])
+        self.rise = np.power(np.ones_like(self.t0) * 10, burstparams['rise'])
         self.skew = burstparams['skew']
         self.ybkg = ybkg
 
