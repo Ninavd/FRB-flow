@@ -24,8 +24,8 @@ class Sampleable(ABC):
 class UniformPrior(Sampleable):
 
     def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int, device=None):
-        self.x_min = x_min
-        self.x_max = x_max
+        self.x_min = x_min if not log else np.log10(x_min)
+        self.x_max = x_max if not log else np.log10(x_max)
         self.log = log
         self.enforce_order = enforce_order
         self.dim = dim

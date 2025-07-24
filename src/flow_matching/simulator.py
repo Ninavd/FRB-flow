@@ -7,8 +7,8 @@ class Model:
         self.n_components = ncomp.to(device) # (bs, 1)
         
         self.t0 = burstparams['t0'].to(device)
-        self.amp = burstparams['amp'].to(device)
-        self.rise = burstparams['rise'].to(device)
+        log_amp = burstparams['amp'].to(device)
+        log_rise = burstparams['rise'].to(device)
         self.skew = burstparams['skew'].to(device)
         self.ybkg = ybkg
 
@@ -19,8 +19,8 @@ class Model:
                 break
         
         # transform log rise and log amp
-        self.rise = torch.pow(torch.ones_like(self.rise) * 10, self.rise)
-        self.amp = torch.pow(torch.ones_like(self.amp) * 10, self.amp)
+        self.rise = torch.pow(torch.ones_like(log_rise) * 10, log_rise)
+        self.amp = torch.pow(torch.ones_like(log_amp) * 10, log_amp)
 
         # expand potentially fixed params
         self.t0 = torch.broadcast_to(self.t0, (bs, n)) if self.t0.shape != (bs, n) else self.t0
