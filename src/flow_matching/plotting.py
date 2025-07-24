@@ -109,9 +109,9 @@ def plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, sav
 
         return xx
 
-def corner_plot(samples:np.ndarray, simulator, inf_params, N, save_path: str | None, show: bool):
+def corner_plot(samples:np.ndarray, burstparams, inf_params, N, save_path: str | None, show: bool):
     var_names = gen_parameter_labels(inf_params, N)
-    true_values = np.array([simulator.get_true(key) for key in inf_params]).flatten()
+    true_values = np.array([burstparams[key] for key in inf_params]).flatten()
     fig = corner(samples, labels=var_names, truths=true_values)
 
     if save_path:
@@ -168,7 +168,7 @@ def evaluation_plots(losses, vector_field, path, device,
 
     # corner plot
     if make_corner:
-        corner_plot(final_snapshot.cpu().numpy(), simulator, inf_params, N, save_path, show_plots)
+        corner_plot(final_snapshot.cpu().numpy(), modelparams['burstparams'], inf_params, N, save_path, show_plots)
 
     # plot posterior samples over simulated lightcurve 
     true_flux = model.get_flux()

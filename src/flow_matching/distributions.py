@@ -25,9 +25,9 @@ class Sampleable(ABC):
 class UniformPrior(Sampleable):
 
     def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int):
-        self.x_min = x_min
-        self.x_max = x_max
-        self.log = log
+        self.x_min = x_min if not log else np.log10(x_min)
+        self.x_max = x_max if not log else np.log10(x_max)
+        self.log = log # indicates if sample represents a power exponent
         self.enforce_order = enforce_order
         self.dim = dim
 
@@ -40,10 +40,7 @@ class UniformPrior(Sampleable):
         """
         shape = (num_samples, self.dim)
         
-        if not self.log:
-            samples = (self.x_max - self.x_min) * torch.rand(size=shape) + self.x_min 
-        else:
-            samples = torch.exp((np.log(self.x_max) - np.log(self.x_min)) * torch.rand(size=shape) + np.log(self.x_min))
+        samples = (self.x_max - self.x_min) * torch.rand(size=shape) + self.x_min 
         
         if self.enforce_order:
             sorted_samples, _ = torch.sort(samples, dim=1)
