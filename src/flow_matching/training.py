@@ -58,7 +58,7 @@ class Trainer(ABC):
 
         opt = self.get_optimizer(lr)
 
-        warm_up_iters = int(0.1 * num_epochs)
+        warm_up_iters = min(500, int(0.1 * num_epochs))
         lr_cutoff     = int(0.95 * num_epochs) 
         lr_scheduler  = self.init_lr_scheduler(opt, lr, lr_cutoff, warm_up_iters)
         
