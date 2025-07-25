@@ -8,7 +8,7 @@ from src.flow_matching.models import fourier_embedding, GenericClassifier
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
-                 time_seq_encoder: nn.Module | None = None, classifier_time_encoder: nn.Module | None = None,
+                 time_seq_encoder: nn.Module | None = None,
                  tau_encoder=None, theta_encoder=None):
         """
         Args:
@@ -48,8 +48,6 @@ class TransformerGuidedField(nn.Module):
             activation=nn.GELU(), 
             batch_first=True, 
             norm_first=True, # TODO: set to False? 
-            bias=True, 
-            device=None
             )        
         
         self.encoder = nn.TransformerEncoder(
@@ -57,39 +55,26 @@ class TransformerGuidedField(nn.Module):
             num_layers=6
             )
         
-        # discrete prob model for number of bursts  
+        # maximum number of burst components  
         self.N_max = dim // len(inf_params)
-        self.N_classifier = GenericClassifier(
-            inputs=self.time_dim, 
-            hiddens=[self.time_dim // 2, self.time_dim // 2, self.time_dim // 4, self.time_dim // 4], 
-            outputs=self.N_max
-            )
-        
-        # classifier uses a seperate time sequence encoder
-        self.classifier_time_encoder = classifier_time_encoder if classifier_time_encoder else lambda x : x
 
         # tokens pass through down projection independently
         burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
 
-    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor):
+    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor, N: torch.Tensor):
         """
         Args:
         - x: (bs, dim) 
         -tau: (bs, 1)
         - y: (bs, time_dim) 
+        - N: (bs, 1)
         Returns:
         - u_t^phi(x): (bs, dim)
         """
         # do encodings
-        y_e   = self.time_seq_encoder(y)
+        y   = self.time_seq_encoder(y)
         tau = self.tau_encoder(tau, self.tau_dim) 
-
-        # find p(N) to do N ~ p(N | y)
-        p_N = self.N_classifier(self.classifier_time_encoder(y)) # (bs, N_max)
-
-        # sample N from classifier result
-        N = torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
         
         # create mask that selects first N tokens
         mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N # mask: (bs, N_max)
@@ -102,14 +87,14 @@ class TransformerGuidedField(nn.Module):
         x   = self.theta_encoder(x) # (bs, N_bursts, N_params) (think this should be fine, MLP takes final dimension as input (?))
         
         # prepare y and tau to become part of token vectors (bs, N_tokens, token_dim) N_tokens = N_bursts
-        y_e = y_e.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
-        y_e = y_e.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
+        y = y.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
+        y = y.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         tau = tau.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
         tau = tau.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         # encoder input (bs, N_tokens, token_dim)
-        tokens = torch.cat([y_e, x, tau], dim=-1) 
+        tokens = torch.cat([y, x, tau], dim=-1) 
         _, _, token_dim = tokens.shape
 
         # add positional encoding
@@ -119,8 +104,7 @@ class TransformerGuidedField(nn.Module):
         # go through encoder and project down
         encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
         down_projected = self.down_proj(encoder_output) # (bs, N, N_inf_params)
-        down_projected[mask] = torch.nan # set irrelevant tokens to NaN
-        
+
         final_output   = down_projected.view(bs, dim) # (bs, N * N_inf_params)
         return final_output 
     

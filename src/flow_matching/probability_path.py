@@ -28,7 +28,7 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         num_samples = t.shape[0]
 
         # Sample conditioning variable z ~ p(z)
-        z, _ = self.sample_conditioning_variable(num_samples) 
+        z = self.sample_conditioning_variable(num_samples)[0] 
 
         # sample from initial distribution
         x0 = self.p_simple.sample(num_samples)
@@ -137,5 +137,4 @@ class GuidedLinearProbabilityPath(LinearConditionalProbabilityPath):
                 - z: samples from p(z), (num_samples, ...)
                 - y: labels (num_samples, label_dim)
             """
-            z, y = self.p_data.sample(num_samples) 
-            return z, y     
+            return self.p_data.sample(num_samples)      

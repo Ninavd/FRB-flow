@@ -245,14 +245,92 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
 class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
 
-    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module):
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, N_classifier: nn.Module):
         super().__init__(path, model)
-        # TODO: add cross entropy loss for classifier?
+        self.cross_entropy = nn.CrossEntropyLoss()
+        self.N_classifier = N_classifier
 
-    def MSE(self, differences):
-        # NaN tokens should not contribute to the loss
-        mask = ~torch.isnan(differences)
-        squared_error = differences[mask] ** 2  
+    def prepare_batches(self, device, batch_size, **kwargs):
+        # samples
+        z_batch, y_batch, N_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
+        x0_batch = self.path.p_simple.sample(batch_size) # x_0 ~ p_simple
+        # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
-        # average loss per sample
-        return torch.mean(squared_error)
+        # t ~ t^(1/1+a) (inverse sampling)
+        u = torch.rand(batch_size, 1, device=device)
+        alpha = -0.25
+        power = (1 + alpha) / (2 + alpha)
+        t_batch = torch.pow(u, power)
+
+        # interpolate initial state and target
+        x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
+        
+        # standardize
+        x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
+
+        return x0_batch, x_batch, z_batch, t_batch, y_batch, N_batch
+    
+    def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
+        
+        batches = self.prepare_batches(device, batch_size, **kwargs)
+        x0_batch, x_batch, z_batch, t_batch, y_batch, N_true = batches
+
+        # N ~ p(N|y)
+        p_N = self.N_classifier(y_batch) # (bs, N_max)
+        N_pred = torch.multinomial(p_N, num_samples=1) + 1 # (bs, 1)
+
+        predicted_field = self.model(x_batch, t_batch, y_batch, N_pred)
+        target_field    = self.path.conditional_vector_field(x0_batch, z_batch)
+
+        # don't count meaningless tokens
+        N_max = p_N.shape[-1]
+        N_params = predicted_field.shape[-1] // N_max
+        mask = torch.arange(N_max, device=p_N.device).expand(p_N.shape) >= N_pred
+        mask = torch.repeat_interleave(mask, repeats=N_params, dim=1)
+
+        # vector field loss
+        differences = predicted_field - target_field # shape batch_size, ndim
+        MSE = self.MSE(differences[mask])
+
+        # classifier loss
+        targets = torch.zeros_like(p_N)
+        targets[N_true - 1] = 1
+        cross_entropy_loss = self.cross_entropy(p_N, targets)
+
+        return MSE + cross_entropy_loss
+    
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_, mean, std):
+        """
+        Save yaml with training and model settings
+        """
+        try:
+            t_encoder_config = self.model.time_seq_encoder.get_config()
+        except AttributeError:
+            t_encoder_config = False
+
+        config = {
+            "model"           : self.model.get_config(),
+            "time_seq_encoder": t_encoder_config,
+            "theta_encoder"   : self.model.encode_theta,
+            "tau_encoder"     : self.model.encode_tau,
+            "training":
+            {
+                "num_epochs"   : num_epochs,
+                "learning_rate": lr,
+                "batch_size"   : batch_size,
+                "gradient_clip": clip,
+                "optimizer"    : "adam",
+                "lambda_"      : [float(l) for l in lambda_],
+                "sample_mean"  : [float(m) for m in mean],
+                "sample_std"   : [float(s) for s in std]
+            },
+            "path": {
+                "name"    :self.path.get_config(),
+                "p_simple":self.path.p_simple.get_config(),
+                "p_data"  : self.path.p_data.get_config()
+            },
+            "classifier": self.N_classifier.get_config()
+        }
+
+        with open(os.path.join(path, "config.yaml"), "w") as f:
+            yaml.dump(config, f, sort_keys=False)

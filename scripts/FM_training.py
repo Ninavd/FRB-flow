@@ -7,7 +7,7 @@ from copy import deepcopy
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder, EncodedClassifier
 from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
 
 import numpy as np
@@ -138,9 +138,15 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
         trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
 
     elif model == "T":
-        _, classifier_time_encoder = pick_timeseries_encoder(encoder)
-        vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, classifier_time_encoder, tau_encoder, theta_encoder)
-        trainer = TransdimensionalTrainer(path, vector_field)
+        time_dim, classifier_time_encoder = pick_timeseries_encoder(encoder)
+        N_classifier = EncodedClassifier(
+            classifier_time_encoder, 
+            inputs=time_dim, 
+            hiddens=[time_dim // 2, time_dim // 2, time_dim // 4, time_dim // 4], 
+            outputs=N
+            ).to(device)
+        vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
+        trainer = TransdimensionalTrainer(path, vector_field, N_classifier)
     
     losses = trainer.train(
         epochs, device, lr, clip, EMA, False if no_save else True, 

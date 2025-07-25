@@ -31,6 +31,8 @@ class UniformPrior(Sampleable):
         self.dim = dim
         self.device = device
 
+        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order)
+
     def sample(self, num_samples: int) -> torch.Tensor:
         """
         Args:
@@ -48,19 +50,18 @@ class UniformPrior(Sampleable):
         
         return samples
     
-    def get_config(self):
+    def make_config(self, **kwargs):
         config = {
             "name":self.__class__.__name__, 
             "init_params":
             {
-                "x_min"        :self.x_min,
-                "x_max"        :self.x_max,
-                "log"          :self.log,
-                "enforce_order":self.enforce_order,
-                "dim"          :self.dim
-            }           
+                **kwargs
+            },        
         }
         return config  
+    
+    def get_config(self):
+        return self.config
 
 class DiscreteUniform(Sampleable):
     """
@@ -163,11 +164,11 @@ class Posterior(Sampleable):
         burstparams = self.model_params['burstparams']
         burstparams = self.edit_burstparams(burstparams, self.prior.samples_as_dict(prior_samples))
         
-        ncomp = self.N_prior.sample((num_samples))
+        Ns = self.N_prior.sample((num_samples))
         
-        simulations = self.light_curve_sample(burstparams=burstparams, ncomp=ncomp)
+        simulations = self.light_curve_sample(burstparams=burstparams, ncomp=Ns)
 
-        return prior_samples, simulations
+        return prior_samples, simulations, Ns
     
     def light_curve_sample(self, burstparams, ncomp) -> torch.Tensor:
         """

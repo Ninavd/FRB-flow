@@ -360,10 +360,10 @@ class UNetEncoder(nn.Module):
         return config
 
 class GenericClassifier(nn.Module):
-    def __init__(self, inputs, hiddens, outputs):
+    def __init__(self, inputs, hiddens, outputs, activation=nn.SiLU):
         super().__init__()
 
-        self.net = build_mlp(dims=[inputs] + hiddens + [outputs])
+        self.net = build_mlp([inputs] + hiddens + [outputs], activation)
         self.softmax = nn.Softmax(dim=1) if outputs > 1 else nn.Sigmoid()
 
     def forward(self, x): # x: (bs, dim)
@@ -371,6 +371,40 @@ class GenericClassifier(nn.Module):
         x = self.softmax(x)
         return x          # (bs, 1)
 
+class EncodedClassifier(GenericClassifier):
+    """
+    Encodes input before classifying
+    """
+    def __init__(self, encoder:nn.Module, **kwargs):
+        super().__init__(**kwargs)
+        self.encoder = encoder
+        self.config = self.make_config(**kwargs)
+    
+    def forward(self, y):
+        y = self.net(self.encoder(y))
+        return self.softmax(y)
+
+    def sample(self, y):
+        p_N = self(y) # (bs, N_max)
+        return torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
+
+    def make_config(self, **kwargs):
+        config = {
+            "name": self._get_name(),
+            "init_params":
+            {
+                **kwargs
+            },
+            "encoder":
+            {
+                **self.encoder.get_config()
+            }
+        }
+        return config
+    
+    def get_config(self):
+        return self.config
+    
 if __name__=="__main__":
     import numpy as np
     # encoder = FRBLightCurveCNN()
