@@ -101,7 +101,7 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     SKEW = 5
     
     burstparams = {
-        't0'   : torch.linspace(0.1, 0.8, N),
+        't0'   : torch.linspace(0.2, 0.8, N),
         'amp'  : torch.Tensor([np.log10(AMP)]).repeat(N),
         'rise' : torch.Tensor([np.log10(RISE)]).repeat(N),
         'skew' : torch.Tensor([SKEW]).repeat(N)
@@ -136,7 +136,8 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim, [64, 64, 32, 16], latent_dim, time_seq_encoder, tau_encoder, theta_encoder, combine_mode)
     elif model == "T":
-        vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
+        _, classifier_time_encoder = pick_timeseries_encoder(encoder)
+        vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, classifier_time_encoder, tau_encoder, theta_encoder)
     
     trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
     losses = trainer.train(

@@ -8,11 +8,16 @@ from src.flow_matching.models import fourier_embedding, GenericClassifier
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
-                 time_seq_encoder: nn.Module | None = None, tau_encoder=None, theta_encoder=None):
+                 time_seq_encoder: nn.Module | None = None, classifier_time_encoder: nn.Module | None = None,
+                 tau_encoder=None, theta_encoder=None):
         """
         Args:
-        - dim: number of parameters
+        - dim: number of parameters (dimension of the vector field)
         - time_dim: (latent) length of light curve
+        - time_seq_encoder (trainable): Compresses time series
+        - classifier_time_encoder (trainable): Compresses time series for the classifier
+        - tau_encoder: Inflates flow matching time tau.
+        - theta_encoder (trainable): Inflates parameter vector theta.
         """
         super().__init__()
         self.dim   = dim
@@ -59,6 +64,9 @@ class TransformerGuidedField(nn.Module):
             hiddens=[self.time_dim // 2, self.time_dim // 2, self.time_dim // 4, self.time_dim // 4], 
             outputs=self.N_max
             )
+        
+        # classifier uses a seperate time sequence encoder
+        self.classifier_time_encoder = classifier_time_encoder if classifier_time_encoder else lambda x : x
 
         # tokens pass through down projection independently
         burst_params = len(inf_params)  
@@ -74,11 +82,11 @@ class TransformerGuidedField(nn.Module):
         - u_t^phi(x): (bs, dim)
         """
         # do encodings
-        y   = self.time_seq_encoder(y)
+        y_e   = self.time_seq_encoder(y)
         tau = self.tau_encoder(tau, self.tau_dim) 
 
-        # find p(N) to do N ~ p(N)
-        p_N = self.N_classifier(y) # (bs, N_max)
+        # find p(N) to do N ~ p(N | y)
+        p_N = self.N_classifier(self.classifier_time_encoder(y)) # (bs, N_max)
 
         # sample N from classifier result
         N = torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
@@ -94,14 +102,14 @@ class TransformerGuidedField(nn.Module):
         x   = self.theta_encoder(x) # (bs, N_bursts, N_params) (think this should be fine, MLP takes final dimension as input (?))
         
         # prepare y and tau to become part of token vectors (bs, N_tokens, token_dim) N_tokens = N_bursts
-        y = y.unsqueeze(1)            # (bs, ≥1)    -> (bs, 1, ≥1)
-        y = y.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
+        y_e = y_e.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
+        y_e = y_e.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
-        tau = tau.unsqueeze(1)                # (bs, ≥1)    -> (bs, 1, ≥1)
-        tau = tau.repeat(1, self.N_max, 1)      # (bs, 1, ≥1) -> (bs, N, ≥1)
+        tau = tau.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
+        tau = tau.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
 
         # encoder input (bs, N_tokens, token_dim)
-        tokens = torch.cat([y, x, tau], dim=-1) 
+        tokens = torch.cat([y_e, x, tau], dim=-1) 
         _, _, token_dim = tokens.shape
 
         # add positional encoding
