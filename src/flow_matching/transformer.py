@@ -119,8 +119,9 @@ class TransformerGuidedField(nn.Module):
         # go through encoder and project down
         encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
         down_projected = self.down_proj(encoder_output) # (bs, N, N_inf_params)
-        final_output    = down_projected.view(bs, dim) # (bs, N * N_inf_params)
-
+        down_projected[mask] = torch.nan # set irrelevant tokens to NaN
+        
+        final_output   = down_projected.view(bs, dim) # (bs, N * N_inf_params)
         return final_output 
     
     def get_config(self):

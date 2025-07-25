@@ -6,7 +6,7 @@ sys.path.append('..')
 from copy import deepcopy
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer
+from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder
 from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
 
@@ -135,11 +135,13 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
     
     if model == "MLP":
         vector_field = MLPGuidedVectorField(dim, [64, 64, 32, 16], latent_dim, time_seq_encoder, tau_encoder, theta_encoder, combine_mode)
+        trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
+
     elif model == "T":
         _, classifier_time_encoder = pick_timeseries_encoder(encoder)
         vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, classifier_time_encoder, tau_encoder, theta_encoder)
+        trainer = TransdimensionalTrainer(path, vector_field)
     
-    trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
     losses = trainer.train(
         epochs, device, lr, clip, EMA, False if no_save else True, 
         batch_size, job_id, lambda_=lambda_, mean=mean, std=std

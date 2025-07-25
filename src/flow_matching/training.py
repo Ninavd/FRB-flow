@@ -170,22 +170,11 @@ class ConditionalFlowMatchingTrainer(Trainer):
     def get_train_loss(self, device, batch_size: int) -> torch.Tensor:
         # samples
         z_batch = self.path.p_data.sample(batch_size) # z ~ p_data
-        t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1)
-
-        # put data on the doomsday device
-        z_batch = z_batch.to(device)
-        t_batch = t_batch.to(device)
+        t_batch = torch.rand(batch_size, 1, device=device) # t ~ U(0, 1)
 
         x0_batch = self.path.p_simple.sample(batch_size)
-        x0_batch = x0_batch.to(device)
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
 
-        # put data on the doomsday device
-        x_batch = x_batch.to(device)
-
-        # we take a monte carlo estimate of the loss:
-        # 1/batch size * sum ((trained vector field) - (target vector field))**2
-        
         differences = (
             self.model(x_batch, t_batch)
             - self.path.conditional_vector_field(x0_batch, z_batch)
@@ -209,46 +198,41 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         super().__init__(model)
         self.path = path
 
-    def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
-       
+    def prepare_batches(self, device, batch_size, **kwargs):
         # samples
         z_batch, y_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
         x0_batch = self.path.p_simple.sample(batch_size) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
         # t ~ t^(1/1+a) (inverse sampling)
-        u = torch.rand(batch_size, 1)
+        u = torch.rand(batch_size, 1, device=device)
         alpha = -0.25
         power = (1 + alpha) / (2 + alpha)
         t_batch = torch.pow(u, power)
-        
-        # put data on the doomsday device
-        z_batch, y_batch = z_batch.to(device), y_batch.to(device)
-        t_batch  = t_batch.to(device)
-        x0_batch = x0_batch.to(device)
 
+        # interpolate initial state and target
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
         
-        # put data on the doomsday device
-        x_batch = x_batch.to(device)
-
-        # scale x0_batch, z_batch and x_batch by lambda
+        # standardize
         x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
+
+        return x0_batch, x_batch, z_batch, t_batch, y_batch
+
+    def MSE(self, differences):
+        squared_error = differences ** 2
+        return torch.mean(squared_error)
     
-        # we take a monte carlo estimate of the loss
-        # 1/batch size * sum ((trained vector field) - (target vector field))**2
+    def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
+        
+        batches = self.prepare_batches(device, batch_size, **kwargs)
+        x0_batch, x_batch, z_batch, t_batch, y_batch = batches
+
         predicted_field = self.model(x_batch, t_batch, y_batch)
         target_field    = self.path.conditional_vector_field(x0_batch, z_batch)
 
         differences = predicted_field - target_field # shape batch_size, ndim
-        MSE         = torch.sum(differences ** 2, dim = 1) # sum column wise
-        
-        h = 0
-        field_size_penalty = h * torch.sum(predicted_field ** 2, dim=1)
-
-        losses = MSE + field_size_penalty
-
-        return torch.mean(losses)
+    
+        return self.MSE(differences)
     
     def scale_input(self, inputs, lambda_, mean, std):
         """
@@ -258,3 +242,17 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
             inputs[i] = input / lambda_
             inputs[i] = (input - mean) / std
         return inputs
+
+class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
+
+    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module):
+        super().__init__(path, model)
+        # TODO: add cross entropy loss for classifier?
+
+    def MSE(self, differences):
+        # NaN tokens should not contribute to the loss
+        mask = ~torch.isnan(differences)
+        squared_error = differences[mask] ** 2  
+
+        # average loss per sample
+        return torch.mean(squared_error)
