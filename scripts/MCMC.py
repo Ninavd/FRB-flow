@@ -33,7 +33,7 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     time = np.linspace(0, 1.0, 1000)
 
     amp  = [np.log10(100) for _ in range(N)]
-    t0   = [float(t) for t in list(np.linspace(0.1, 0.8, N))]
+    t0   = [float(t) for t in list(np.linspace(0.2, 0.8, N))]
     rise = [np.log10(0.03) for _ in range(N)]
     skew = [5.0 for _ in range(N)]
 
@@ -62,7 +62,7 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
 
     # define the priors
     prior_dict = {
-        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
+        "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
         "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
         "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
