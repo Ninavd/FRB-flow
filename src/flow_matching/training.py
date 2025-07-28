@@ -295,7 +295,6 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
 
         # classifier loss
         cross_entropy_loss = self.cross_entropy(N_logits, (N_true - 1).view(-1))
-        print(MSE, cross_entropy_loss)
         return MSE + cross_entropy_loss 
     
     def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std):
