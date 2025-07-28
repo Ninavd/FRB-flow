@@ -8,7 +8,7 @@ from src.flow_matching.distributions import UniformPrior, CompositePrior, Poster
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder, EncodedClassifier, TransdimensionalModel
-from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
+from src.flow_matching.transformer import TransformerGuidedField
 
 import numpy as np
 import torch
@@ -31,10 +31,6 @@ def pick_timeseries_encoder(type):
     elif type == "MLP":
         latent_dim = 128
         time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
-
-    elif type == "T":
-        latent_dim = 128
-        time_seq_encoder = FRBLightCurveTransformer()
 
     elif type == "UNET":
             latent_dim = 64
