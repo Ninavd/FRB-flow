@@ -151,7 +151,7 @@ def evaluation_plots(losses, vector_field, path, device,
         ts = torch.linspace(0, 1, nts).to(device)
 
         # simulate ODE starting from x0
-        x0 = (path.p_simple.sample(num_samples).to(device) / - mean) / std
+        x0 = (path.p_simple.sample(num_samples).to(device) - mean) / std
 
         # plot snapshots of marginal path if space is 2D
         if snapshots and N * len(inf_params) == 2:

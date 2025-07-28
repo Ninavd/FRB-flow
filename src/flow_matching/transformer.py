@@ -1,10 +1,11 @@
 import numpy as np
-import torch 
+import torch
 import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.models import fourier_embedding 
+from src.flow_matching.models import fourier_embedding
+
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
@@ -20,13 +21,13 @@ class TransformerGuidedField(nn.Module):
         - theta_encoder (trainable): Inflates parameter vector theta.
         """
         super().__init__()
-        self.dim   = dim
+        self.dim = dim
         self.inf_params = inf_params
 
         # encoding dimensions
-        self.time_dim  = time_dim # length of (encoded) lightcurve
+        self.time_dim  = time_dim   # length of (encoded) lightcurve
         self.tau_dim   = time_dim // 2 if tau_encoder else 1
-        self.theta_dim = time_dim // 2 if theta_encoder else dim 
+        self.theta_dim = time_dim // 2 if theta_encoder else dim
 
         # encoders boolean (for config)
         self.encode_time_seq = True if time_seq_encoder else False
@@ -34,26 +35,26 @@ class TransformerGuidedField(nn.Module):
         self.encode_theta    = True if theta_encoder else False 
 
         # encoders
-        self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x : x
-        self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _ : x
-        self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x : x 
+        self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x: x
+        self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _: x
+        self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x: x 
 
         token_dim = self.theta_dim + self.time_dim + self.tau_dim
 
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=token_dim,
             nhead=4, 
-            dim_feedforward=token_dim, 
+            dim_feedforward=4 * token_dim, 
             dropout=0.1, 
             activation=nn.GELU(), 
             batch_first=True, 
-            norm_first=True, # TODO: set to False? 
-            )        
+            norm_first=True,   # TODO: set to False? 
+        )        
         
         self.encoder = nn.TransformerEncoder(
             encoder_layer, 
             num_layers=6
-            )
+        )
         
         # maximum number of burst components  
         self.N_max = dim // len(inf_params)
@@ -118,15 +119,16 @@ class TransformerGuidedField(nn.Module):
         Return dict with model setting for config file.
         """
         config = {
-            "name":self._get_name(),
+            "name": self._get_name(),
             "init_params":
             {
-                "dim":self.dim,
+                "dim":       self.dim,
                 "inf_params":self.inf_params,
-                "time_dim":self.time_dim
+                "time_dim":  self.time_dim
             }
         }
         return config
+
 
 def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     """
@@ -149,6 +151,7 @@ def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
 
     return pos_encoding  
 
+
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
         p_simple=PeaktimePrior(),
@@ -161,8 +164,8 @@ if __name__=="__main__":
 
     batch_size=32
     z_batch, y_batch = path.p_data.sample(batch_size) # z, y ~ p_data
-    x0_batch = path.p_simple.sample(batch_size) # x_0 ~ p_simple
-    t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
+    x0_batch = path.p_simple.sample(batch_size)       # x_0 ~ p_simple
+    t_batch = torch.rand(batch_size, 1)               # t ~ U(0, 1) 
     x_batch = path.sample_conditional_path(x0_batch, z_batch, t_batch)
 
     transformer = TransformerGuidedField(dim=2, time_dim=128, time_seq_encoder=time_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder)
