@@ -121,7 +121,7 @@ def corner_plot(samples:np.ndarray, burstparams, inf_params, N, save_path: str |
     plt.show() if show else None
 
 def evaluation_plots(losses, vector_field, path, device, 
-                     num_samples, inf_params, N, modelparams, lambda_, mean, std,
+                     num_samples, inf_params, N, modelparams, mean, std,
                      save_path, show_plots, 
                      loss=True, snapshots=True, make_corner=True, 
                     ):
@@ -151,12 +151,12 @@ def evaluation_plots(losses, vector_field, path, device,
         ts = torch.linspace(0, 1, nts).to(device)
 
         # simulate ODE starting from x0
-        x0 = (path.p_simple.sample(num_samples).to(device) / lambda_ - mean) / std
+        x0 = (path.p_simple.sample(num_samples).to(device) / - mean) / std
 
         # plot snapshots of marginal path if space is 2D
         if snapshots and N * len(inf_params) == 2:
             xts = solver.solve_with_trajectory(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations)
-            xts *= lambda_ * std + mean
+            xts *= std + mean
             
             # only save num_marginals snapshots 
             record_every_idxs = record_every(nts, nts // (num_marginals - 1))
@@ -164,7 +164,7 @@ def evaluation_plots(losses, vector_field, path, device,
 
             final_snapshot = plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, save_path, show_plots)
         else:
-            final_snapshot = solver.solve(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations) * lambda_ * std + mean
+            final_snapshot = solver.solve(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations) * std + mean
 
     # corner plot
     if make_corner:

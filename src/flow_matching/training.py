@@ -123,7 +123,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_, mean, std):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std):
         """
         Save yaml with training and model settings
         """
@@ -144,7 +144,6 @@ class Trainer(ABC):
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
-                "lambda_"      : [float(l) for l in lambda_],
                 "sample_mean"  : [float(m) for m in mean],
                 "sample_std"   : [float(s) for s in std]
             },
@@ -235,12 +234,11 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
     
         return self.MSE(differences)
     
-    def scale_input(self, inputs, lambda_, mean, std):
+    def scale_input(self, inputs, mean, std):
         """
         scale inference parameters linearly by lambda.
         """
         for i, input in enumerate(inputs):
-            inputs[i] = input / lambda_
             inputs[i] = (input - mean) / std
         return inputs
 
@@ -297,9 +295,10 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
 
         # classifier loss
         cross_entropy_loss = self.cross_entropy(N_logits, (N_true - 1).view(-1))
+        print(MSE, cross_entropy_loss)
         return MSE + cross_entropy_loss 
     
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_, mean, std):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std):
         """
         Save yaml with training and model settings
         """
@@ -320,7 +319,6 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
                 "batch_size"   : batch_size,
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
-                "lambda_"      : [float(l) for l in lambda_],
                 "sample_mean"  : [float(m) for m in mean],
                 "sample_std"   : [float(s) for s in std]
             },
