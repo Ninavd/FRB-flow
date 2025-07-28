@@ -31,7 +31,7 @@ class UniformPrior(Sampleable):
         self.dim = dim
         self.device = device
 
-        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order)
+        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order, dim=dim)
 
     def sample(self, num_samples: int) -> torch.Tensor:
         """
