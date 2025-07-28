@@ -373,19 +373,20 @@ class GenericClassifier(nn.Module):
 
 class EncodedClassifier(GenericClassifier):
     """
-    Encodes input before classifying
+    Encodes input before classifying.
+    Outputs logits (not normalized).
     """
     def __init__(self, encoder:nn.Module, **kwargs):
         super().__init__(**kwargs)
-        self.encoder = encoder
+        self.encoder = encoder if encoder else lambda x : x
         self.config = self.make_config(**kwargs)
     
     def forward(self, y):
         y = self.net(self.encoder(y))
-        return self.softmax(y)
+        return y
 
     def sample(self, y):
-        p_N = self(y) # (bs, N_max)
+        p_N = self(self.softmax(y)) # (bs, N_max)
         return torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
 
     def make_config(self, **kwargs):
@@ -404,7 +405,19 @@ class EncodedClassifier(GenericClassifier):
     
     def get_config(self):
         return self.config
+
+class TransdimensionalModel(nn.Module):
+    """
+    wrapper such that optimizer includes both models.
+    """
+    def __init__(self, classifier: nn.Module, vector_field_model: nn.Module):
+        super().__init__()
+        self.component_classifier = classifier
+        self.vector_field_model = vector_field_model
     
+    def forward(self, x, t, y, N):
+        return self.vector_field_model(x, t, y, N)
+
 if __name__=="__main__":
     import numpy as np
     # encoder = FRBLightCurveCNN()

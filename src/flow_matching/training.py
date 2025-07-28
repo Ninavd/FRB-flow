@@ -10,6 +10,7 @@ from tqdm import tqdm
 from ema_pytorch import EMA
 
 from src.flow_matching.probability_path import ConditionalProbabilityPath
+from src.flow_matching.models import TransdimensionalModel
 from src.flow_matching.helpers import model_size_b, create_run_folder
 
 class Trainer(ABC):
@@ -245,10 +246,11 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
 class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
 
-    def __init__(self, path: ConditionalProbabilityPath, model: nn.Module, N_classifier: nn.Module):
+    def __init__(self, path: ConditionalProbabilityPath, model: TransdimensionalModel):
         super().__init__(path, model)
         self.cross_entropy = nn.CrossEntropyLoss()
-        self.N_classifier = N_classifier
+        self.N_classifier = model.component_classifier
+        self.vector_field = model.vector_field_model
 
     def prepare_batches(self, device, batch_size, **kwargs):
         # samples
@@ -276,16 +278,17 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         x0_batch, x_batch, z_batch, t_batch, y_batch, N_true = batches
 
         # N ~ p(N|y)
-        p_N = self.N_classifier(y_batch) # (bs, N_max)
-        N_pred = torch.multinomial(p_N, num_samples=1) + 1 # (bs, 1)
+        N_logits = self.N_classifier(y_batch) # (bs, N_max)
+        # p_N = torch.softmax(N_logits, dim=1)
+        # N_pred = torch.multinomial(p_N, num_samples=1) + 1 # (bs, 1)
 
-        predicted_field = self.model(x_batch, t_batch, y_batch, N_pred)
+        predicted_field = self.vector_field(x_batch, t_batch, y_batch, N_true)
         target_field    = self.path.conditional_vector_field(x0_batch, z_batch)
 
         # don't count meaningless tokens
-        N_max = p_N.shape[-1]
+        N_max = N_logits.shape[-1]
         N_params = predicted_field.shape[-1] // N_max
-        mask = torch.arange(N_max, device=p_N.device).expand(p_N.shape) >= N_pred
+        mask = torch.arange(N_max, device=N_logits.device).expand(N_logits.shape) >= N_true
         mask = torch.repeat_interleave(mask, repeats=N_params, dim=1)
 
         # vector field loss
@@ -293,26 +296,23 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         MSE = self.MSE(differences[mask])
 
         # classifier loss
-        targets = torch.zeros_like(p_N)
-        targets[N_true - 1] = 1
-        cross_entropy_loss = self.cross_entropy(p_N, targets)
-
-        return MSE + cross_entropy_loss
+        cross_entropy_loss = self.cross_entropy(N_logits, (N_true - 1).view(-1))
+        return MSE + cross_entropy_loss 
     
     def save_config_file(self, num_epochs, lr, clip, batch_size, path, lambda_, mean, std):
         """
         Save yaml with training and model settings
         """
         try:
-            t_encoder_config = self.model.time_seq_encoder.get_config()
+            t_encoder_config = self.vector_field.time_seq_encoder.get_config()
         except AttributeError:
             t_encoder_config = False
 
         config = {
-            "model"           : self.model.get_config(),
+            "model"           : self.vector_field.get_config(),
             "time_seq_encoder": t_encoder_config,
-            "theta_encoder"   : self.model.encode_theta,
-            "tau_encoder"     : self.model.encode_tau,
+            "theta_encoder"   : self.vector_field.encode_theta,
+            "tau_encoder"     : self.vector_field.encode_tau,
             "training":
             {
                 "num_epochs"   : num_epochs,

@@ -7,7 +7,7 @@ from copy import deepcopy
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
-from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder, EncodedClassifier
+from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, LightCurveMLP, fourier_embedding, UNetEncoder, EncodedClassifier, TransdimensionalModel
 from src.flow_matching.transformer import TransformerGuidedField, FRBLightCurveTransformer
 
 import numpy as np
@@ -146,8 +146,9 @@ def main(ncomp: int, inf_params: list[str], lambda_: list[float],
             outputs=N
             ).to(device)
         vector_field = TransformerGuidedField(dim, inf_params, latent_dim, time_seq_encoder, tau_encoder, theta_encoder)
-        trainer = TransdimensionalTrainer(path, vector_field, N_classifier)
-    
+        vector_field = TransdimensionalModel(N_classifier, vector_field)
+        trainer = TransdimensionalTrainer(path, vector_field)
+        
     losses = trainer.train(
         epochs, device, lr, clip, EMA, False if no_save else True, 
         batch_size, job_id, lambda_=lambda_, mean=mean, std=std

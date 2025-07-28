@@ -4,7 +4,7 @@ import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.models import fourier_embedding, GenericClassifier 
+from src.flow_matching.models import fourier_embedding 
 
 class TransformerGuidedField(nn.Module):
     def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
@@ -62,6 +62,8 @@ class TransformerGuidedField(nn.Module):
         burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
 
+        self.mask = None
+
     def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor, N: torch.Tensor):
         """
         Args:
@@ -77,7 +79,7 @@ class TransformerGuidedField(nn.Module):
         tau = self.tau_encoder(tau, self.tau_dim) 
         
         # create mask that selects first N tokens
-        mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N # mask: (bs, N_max)
+        self.mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N # mask: (bs, N_max)
 
         # split up x into N chunks of burstparams
         bs, dim = x.shape
@@ -102,11 +104,14 @@ class TransformerGuidedField(nn.Module):
         tokens += positional_encoding
 
         # go through encoder and project down
-        encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
+        encoder_output = self.encoder(tokens, src_key_padding_mask=self.mask)   # (bs, N, latent_dim)
         down_projected = self.down_proj(encoder_output) # (bs, N, N_inf_params)
 
         final_output   = down_projected.view(bs, dim) # (bs, N * N_inf_params)
         return final_output 
+    
+    def get_mask(self):
+        return self.mask
     
     def get_config(self):
         """
@@ -143,57 +148,6 @@ def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     pos_encoding[:, 1::2] = torch.cos(position * div_term) 
 
     return pos_encoding  
-
-
-class FRBLightCurveTransformer(nn.Module):
-    """
-    Encodes univariate time series data with transformer encoder. 
-    """
-    def __init__(self,
-                 seq_len: int   = 1000,
-                 d_model: int   = 128,
-                 nhead: int     = 8,
-                 nlayers: int   = 4,
-                 latent_dim: int = 128):
-        
-        super().__init__()
-        
-        self.config = self.make_config(seq_len=seq_len, d_model=d_model, nhead=nhead, nlayers=nlayers, latent_dim=latent_dim)
-
-        self.input_proj = nn.Linear(1, d_model)
-        
-        # learnable positional embedding (seq_len, d_model)
-        self.pos_embed  = nn.Parameter(torch.randn(seq_len, d_model))
-        
-        encoder_layer   = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=4*d_model,
-            batch_first=True,       # (B, L, D)
-            norm_first=True)
-        self.encoder    = nn.TransformerEncoder(encoder_layer, nlayers)
-        self.head       = nn.Linear(d_model, latent_dim)
-
-    def forward(self, x):          # x: (B, L)  
-        x = x.unsqueeze(-1)        # (B,L,1)
-        # x = x.transpose(1, 2)                       
-        h = self.input_proj(x) + self.pos_embed     # add positions  → (B,L,D)
-        h = self.encoder(h)                         # (B,L,D)
-        h = h.mean(dim=1)                           # simple pooling
-        return self.head(h)                         # (B,latent_dim)
-
-    def get_config(self):
-        return self.config
-    
-    def make_config(self, **kwargs):
-        config = {
-            "name": self._get_name(),
-            "init_params":
-            {
-                **kwargs
-            }
-        }
-        return config
 
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
