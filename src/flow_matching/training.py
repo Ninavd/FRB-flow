@@ -286,7 +286,7 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         # don't count meaningless tokens
         N_max = N_logits.shape[-1]
         N_params = predicted_field.shape[-1] // N_max
-        mask = torch.arange(N_max, device=N_logits.device).expand(N_logits.shape) >= N_true
+        mask = torch.arange(N_max, device=N_logits.device).expand(N_logits.shape) < N_true
         mask = torch.repeat_interleave(mask, repeats=N_params, dim=1)
 
         # vector field loss
