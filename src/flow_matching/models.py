@@ -386,7 +386,7 @@ class EncodedClassifier(GenericClassifier):
         return y
 
     def sample(self, y):
-        p_N = self(self.softmax(y)) # (bs, N_max)
+        p_N = self(torch.softmax(y, dim=1)) # (bs, N_max)
         return torch.multinomial(p_N, num_samples=1) + 1  # N: (bs, 1)
 
     def make_config(self, **kwargs):
