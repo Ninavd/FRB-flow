@@ -26,6 +26,9 @@ def model_size_b(model: nn.Module) -> int:
         size += buf.nelement() * buf.element_size()
     return size
 
+def count_model_parameters(model:nn.Module) -> int:
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 def get_sample_mean_std(prior, num_samples: int, device=None):
     """"
     Get estimate of sample mean and standard deviation
