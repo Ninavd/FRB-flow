@@ -4,7 +4,7 @@ import sys
 
 sys.path.append('..')
 from copy import deepcopy
-from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior
+from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
 from src.flow_matching.models import (
@@ -93,6 +93,7 @@ def main(N: int,
          encode_tau: bool,
          encode_theta: bool,
          combine_mode: str,
+         fixed_N:bool,
          epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
          num_samples: int, show_plots: bool, no_save: bool, job_id: int | None
          ):
@@ -153,9 +154,10 @@ def main(N: int,
         'burstparams': BURSTPARAMS,
         'ybkg': YBKG
     }
+    N_min = 1 if not fixed_N else N 
 
     prior     = CompositePrior(PRIOR_DICT, device=device)
-    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior)
+    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior=DiscreteUniform(N_min, N, device=device))
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
@@ -181,16 +183,8 @@ def main(N: int,
              theta_encoder,
              combine_mode
             )
-        trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
 
     elif model == "T":
-        time_dim, classifier_time_encoder = pick_timeseries_encoder(encoder)
-        N_classifier = EncodedClassifier(
-                         classifier_time_encoder,
-                         inputs=time_dim,
-                         hiddens=[time_dim // 2, time_dim // 2, time_dim // 4, time_dim // 4],
-                         outputs=N
-                         ).to(device)
         vector_field = TransformerGuidedField(
                          DIM,
                          inf_params,
@@ -199,9 +193,20 @@ def main(N: int,
                          tau_encoder,
                          theta_encoder
                          )
+
+    if fixed_N:
+        trainer = GuidedConditionalFlowMatchingTrainer(path, vector_field)
+    else:
+        time_dim, classifier_time_encoder = pick_timeseries_encoder(encoder)
+        N_classifier = EncodedClassifier(
+                         classifier_time_encoder,
+                         inputs=time_dim,
+                         hiddens=[time_dim // 2, time_dim // 2, time_dim // 4, time_dim // 4],
+                         outputs=N
+                         ).to(device)
         vector_field = TransdimensionalModel(N_classifier, vector_field)
         trainer = TransdimensionalTrainer(path, vector_field)
-    
+
     # ==============================
     #           TRAINING
     # ==============================
@@ -209,7 +214,7 @@ def main(N: int,
     print("CURRENT DEVICE: ", device)
     print(
         f"""
-        \n Training data will have {N} burst component{'' if N == 1 else 's'}
+        \n Training data will have {'a maximum' if not fixed_N else ''} {N} burst component{'' if N == 1 else 's'}
         and sample {inf_params} from the prior\n
         """
     )
@@ -223,7 +228,7 @@ def main(N: int,
          False if no_save else True,
          batch_size,
          job_id,
-         mean=MEAN, std=STD
+         mean=MEAN, std=STD, fixed_N=fixed_N
          )
 
     print('\n')
@@ -265,6 +270,7 @@ if __name__=="__main__":
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for theta (parameter vector)")
  
     parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [GLU or concat]", choices=valid_combine_modes)
+    parser.add_argument("--fixed_N", action="store_true", help="Train on data with fixed number of burst components.")
 
     # training
     parser.add_argument("-e", "--epochs", type=int, default=100_000, help="epochs")
@@ -288,7 +294,7 @@ if __name__=="__main__":
     else:
         main(
             args.ncomp, args.inf_params, 
-            args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode,
+            args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode, args.fixed_N,
             args.epochs, args.batch_size, args.lr, args.clip, args.EMA, 
             args.num_samples, args.show_plots, args.no_save, args.job_id
             )

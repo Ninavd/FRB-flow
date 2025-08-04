@@ -79,7 +79,7 @@ class MLPGuidedVectorField(nn.Module):
         else:
             raise ValueError("INCORRECT COMBINATION METHOD. MUST BE [concat, add, GLU]")            
 
-    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor):
+    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor, *args, **kwargs):
         """
         Args:
         - x: (bs, dim) 
@@ -150,7 +150,7 @@ class GLUInjectedMLP(nn.Module):
 
         self.output_proj = nn.Linear(hiddens[-1], output_dim)
 
-    def forward(self, x, cond):
+    def forward(self, x, cond, *args, **kwargs):
         x = self.input_proj(x)
         for layer in self.layers:
             x = layer(x, cond)  # GLU + conditioning at each layer

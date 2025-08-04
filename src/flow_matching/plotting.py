@@ -10,6 +10,7 @@ from typing import Iterable, Any
 from src.simulator import Model, BurstSimulator
 from src.flow_matching.integration import EulerODESolver
 from src.flow_matching.models import TransdimensionalModel
+from src.flow_matching.transformer import TransformerGuidedField
 
 from src.helpers import record_every, plot_posterior_samples
 
@@ -245,6 +246,8 @@ def evaluation_plots(
             logits = vector_field.component_classifier(simulations)
             N_samples = torch.multinomial(torch.softmax(logits, dim=1), num_samples=1) + 1
             kwargs['N'] = N_samples
+        elif isinstance(vector_field, TransformerGuidedField):
+            kwargs['N'] = torch.tensor(N, device=device).repeat(num_samples, 1)
 
         # initialize ODE solver
         solver = EulerODESolver(vector_field)

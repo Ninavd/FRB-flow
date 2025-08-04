@@ -40,7 +40,21 @@ class Trainer(ABC):
 
         return torch.optim.lr_scheduler.SequentialLR(opt, [lin_lr_scheduler, cos_lr_scheduler], milestones=[warm_up_iters])
 
-    def train(self, num_epochs: int, device: torch.device,  lr: float = 1e-3, clip: float=None, use_ema: bool=True, save_checkpoint=True, batch_size: int = 256, job_id=None, **kwargs) -> torch.Tensor:
+    def train(
+        self, 
+        num_epochs: int, 
+        device: torch.device, 
+        lr: float = 1e-3,
+        clip: float=None,
+        use_ema: bool=True, 
+        save_checkpoint=True, 
+        batch_size: int = 256, 
+        job_id=None, 
+        mean=None, 
+        std=None,
+        fixed_N: bool=False,
+        **kwargs
+        ) -> torch.Tensor:
         # report model size
         size_b = model_size_b(self.model)
         print(f'Training model with size: {size_b / self.MiB:.3f} MiB')
@@ -69,7 +83,7 @@ class Trainer(ABC):
         # (optional) create run folder and save settings
         if save_checkpoint:
             self.save_path = create_run_folder("../checkpoints", job_id)
-            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path, **kwargs)
+            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path, mean, std, fixed_N, **kwargs)
         
         # train loop
         progress_bar = tqdm(range(num_epochs))
@@ -123,7 +137,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std, fixed_N):
         """
         Save yaml with training and model settings
         """
@@ -145,7 +159,8 @@ class Trainer(ABC):
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
                 "sample_mean"  : [float(m) for m in mean],
-                "sample_std"   : [float(s) for s in std]
+                "sample_std"   : [float(s) for s in std],
+                "fixed_N"      : fixed_N
             },
             "path": {
                 "name"    :self.path.get_config(),
@@ -200,7 +215,7 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
     def prepare_batches(self, device, batch_size, **kwargs):
         # samples
-        z_batch, y_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
+        z_batch, y_batch, Ns = self.path.p_data.sample(batch_size) # z, y ~ p_data
         x0_batch = self.path.p_simple.sample(batch_size) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
@@ -216,7 +231,7 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         # standardize
         x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
 
-        return x0_batch, x_batch, z_batch, t_batch, y_batch
+        return x0_batch, x_batch, z_batch, t_batch, y_batch, Ns
 
     def MSE(self, differences):
         squared_error = differences ** 2
@@ -225,9 +240,9 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
     def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
         
         batches = self.prepare_batches(device, batch_size, **kwargs)
-        x0_batch, x_batch, z_batch, t_batch, y_batch = batches
+        x0_batch, x_batch, z_batch, t_batch, y_batch, Ns = batches
 
-        predicted_field = self.model(x_batch, t_batch, y_batch)
+        predicted_field = self.model(x_batch, t_batch, y_batch, Ns)
         target_field    = self.path.conditional_vector_field(x0_batch, z_batch)
 
         differences = predicted_field - target_field # shape batch_size, ndim

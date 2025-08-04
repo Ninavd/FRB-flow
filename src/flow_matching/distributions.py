@@ -140,15 +140,14 @@ class Posterior(Sampleable):
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
     """
 
-    def __init__(self, model_params, inf_params, prior: CompositePrior):
+    def __init__(self, model_params, inf_params, prior: CompositePrior, N_prior=None):
         super().__init__()
         
         self.model_params = model_params # fixed burst parameters
         self.inf_params = inf_params
         self.prior = prior
-        N_max = model_params['ncomp']
         self.device = prior.device
-        self.N_prior = DiscreteUniform(1, N_max, device=self.device)
+        self.N_prior = DiscreteUniform(1, model_params['ncomp'], device=prior.device) if N_prior is None else N_prior
 
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
         """
