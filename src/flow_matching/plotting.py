@@ -8,6 +8,8 @@ from numpy.lib.stride_tricks import sliding_window_view
 
 from src.simulator import Model, BurstSimulator
 from src.flow_matching.integration import EulerODESolver
+from src.flow_matching.models import TransdimensionalModel
+
 from src.helpers import record_every, plot_posterior_samples
 
 import numpy as np
@@ -144,7 +146,12 @@ def evaluation_plots(losses, vector_field, path, device,
         num_marginals = 5   
 
         # TODO: maybe integrate in batches
-        
+        kwargs = {}
+        if isinstance(vector_field, TransdimensionalModel):
+            logits = vector_field.component_classifier(simulations)
+            N_samples = torch.multinomial(torch.softmax(logits, dim=1), num_samples=1) + 1
+            kwargs['N'] = N_samples
+
         # initialize ODE solver
         solver = EulerODESolver(vector_field)
         nts = 100
@@ -155,7 +162,7 @@ def evaluation_plots(losses, vector_field, path, device,
 
         # plot snapshots of marginal path if space is 2D
         if snapshots and N * len(inf_params) == 2:
-            xts = solver.solve_with_trajectory(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations)
+            xts = solver.solve_with_trajectory(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations, **kwargs)
             xts *= std + mean
             
             # only save num_marginals snapshots 
@@ -164,7 +171,7 @@ def evaluation_plots(losses, vector_field, path, device,
 
             final_snapshot = plot_snapshots(xts, ts, record_every_idxs, num_marginals, inf_params, N, save_path, show_plots)
         else:
-            final_snapshot = solver.solve(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations) * std + mean
+            final_snapshot = solver.solve(x0, ts.view(1, nts, 1).expand(num_samples, nts, 1), y=simulations, **kwargs) * std + mean
 
     # corner plot
     if make_corner:
