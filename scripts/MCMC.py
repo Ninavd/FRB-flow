@@ -11,6 +11,7 @@ import yaml
 
 from multiprocessing import Pool
 from corner import corner 
+from copy import deepcopy
 from datetime import datetime 
 
 from src.simulator import BurstSimulator, Model
@@ -32,9 +33,9 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     """
     time = np.linspace(0, 1.0, 1000)
 
-    amp  = [np.log10(100) for _ in range(N)]
-    t0   = [float(t) for t in list(np.linspace(0.1, 0.8, N))]
-    rise = [np.log10(0.03) for _ in range(N)]
+    amp  = [float(np.log10(100)) for _ in range(N)]
+    t0   = [float(t) for t in list(np.linspace(0.3, 0.7, N))]
+    rise = [float(np.log10(0.03)) for _ in range(N)]
     skew = [5.0 for _ in range(N)]
 
     burstparams = {
@@ -46,7 +47,7 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     print(f"Doing inference on a burst with {N} component(s) and burstparams: {burstparams}")
     ybkg = 5.0
 
-    model     = Model(time, N, burstparams, ybkg)
+    model     = Model(time, N, deepcopy(burstparams), ybkg)
     simulator = BurstSimulator(model)
     simulated_counts = simulator.simulate_burst()
 
@@ -56,13 +57,13 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     modelparams = {
         'time' : time,
         'ncomp': N,
-        'burstparams': burstparams,
+        'burstparams': deepcopy(burstparams),
         'ybkg': ybkg
     }
 
     # define the priors
     prior_dict = {
-        "t0"  : UniformPrior(x_min=0,    x_max=1,   log=False, enforce_order=True, dim=N),
+        "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
         "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
         "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
@@ -73,26 +74,6 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     ndim = len(inf_params) * N
     p0 = [prior_dict[key].sample(nwalkers) for key in inf_params]
     p0 = np.concatenate(p0, axis=1)
-
-    # set up save
-    if save:
-        
-        # make run dir
-        timestamp = datetime.today().strftime('%d-%m_%H:%M:%S')
-        save_dir = "../MCMC_runs/run_" + timestamp
-        os.makedirs(save_dir)
-        
-        # save settings yaml
-        settings = {
-            "N":N,
-            "inf_params":inf_params,
-            "burstparams":burstparams
-        }
-        with open(os.path.join(save_dir, "settings.yaml"), "w") as f:
-            yaml.dump(settings, f, sort_keys=False)
-
-        # save simulated lightcurve
-        np.save(os.path.join(save_dir, "simulated_counts.npy"), simulated_counts)
         
     sampler = emcee.EnsembleSampler(
         nwalkers, 
@@ -162,13 +143,33 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         # convergence failed
         if sampler.iteration == max_steps and not converged:
             print(f"\n ConvergenceError: Convergence condition not satisfied within {max_steps} steps. Try increasing the max_steps argument or re-run.")
-            return
+            # return
 
     print(f"\n -> Converged after {sampler.iteration} steps \n")
   
     if parallel:
         pool.close()
         pool.join()
+
+    # set up save
+    if save:
+        
+        # make run dir
+        timestamp = datetime.today().strftime('%d-%m_%H:%M:%S')
+        save_dir = "../MCMC_runs/run_" + timestamp
+        os.makedirs(save_dir)
+        
+        # save settings yaml
+        settings = {
+            "N":N,
+            "inf_params":inf_params,
+            "burstparams":burstparams
+        }
+        with open(os.path.join(save_dir, "settings.yaml"), "w") as f:
+            yaml.dump(settings, f, sort_keys=False)
+
+        # save simulated lightcurve
+        np.save(os.path.join(save_dir, "simulated_counts.npy"), simulated_counts)
 
     # evaluating the results
     samples = sampler.get_chain(flat=True)

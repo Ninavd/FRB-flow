@@ -1,27 +1,49 @@
 import numpy as np
-import torch 
+import torch
 import torch.nn as nn
 from src.flow_matching.helpers import build_mlp
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.models import fourier_embedding
 
+
 class TransformerGuidedField(nn.Module):
-    def __init__(self, dim: int, inf_params: list[str], time_dim: int = 1000, 
-                 time_seq_encoder: nn.Module | None = None, tau_encoder=None, theta_encoder=None):
-        """
+
+    """Flow matching vector field $u_t^phi(x|y, N)$ on transformer encoder architecture. 
+    
+    Tokens are constructed by concatenating the encoded time series,
+    parameter vector and flow matching time. The sequence length is fixed,
+    but tokens are masked out in accordance with the sampled sequence length 
+    (i.e. burst components) passed in the forward call.  
+    """
+
+    def __init__(
+            self, 
+            dim: int, 
+            inf_params: list[str], 
+            time_dim: int = 1000, 
+            time_seq_encoder: nn.Module | None = None,
+            tau_encoder: nn.Module | None = None, 
+            theta_encoder: nn.Module | None = None
+            ):
+        """Initializes the vector field.
+   
         Args:
-        - dim: number of parameters
-        - time_dim: (latent) length of light curve
+            dim (int): The dimension of the vector field.
+            inf_params (list of str): Names of burst component parameters, f.e. `[\'t0\', \'amp\']`. 
+            time_dim (int): Latent length of the encoded light curve.
+            time_seq_encoder (nn.Module or None): Trainable encoder compressing the time series.
+            tau_encoder (nn.Module or None): Should inflate flow matching time to half of `time_dim`.
+            theta_encoder (nn.Module or None): Inflates parameter vector theta.
         """
         super().__init__()
-        self.dim   = dim
+        self.dim = dim
         self.inf_params = inf_params
 
         # encoding dimensions
-        self.time_dim  = time_dim # length of (encoded) lightcurve
+        self.time_dim  = time_dim   # length of (encoded) lightcurve
         self.tau_dim   = time_dim // 2 if tau_encoder else 1
-        self.theta_dim = time_dim // 2 if theta_encoder else dim 
+        self.theta_dim = time_dim // 2 if theta_encoder else dim
 
         # encoders boolean (for config)
         self.encode_time_seq = True if time_seq_encoder else False
@@ -29,94 +51,126 @@ class TransformerGuidedField(nn.Module):
         self.encode_theta    = True if theta_encoder else False 
 
         # encoders
-        self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x : x
-        self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _ : x
-        self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x : x 
+        self.time_seq_encoder = time_seq_encoder if time_seq_encoder else lambda x: x
+        self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _: x
+        self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x: x 
 
         token_dim = self.theta_dim + self.time_dim + self.tau_dim
 
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=token_dim,
             nhead=4, 
-            dim_feedforward=token_dim, 
+            dim_feedforward=4 * token_dim, 
             dropout=0.1, 
             activation=nn.GELU(), 
             batch_first=True, 
-            norm_first=True, # TODO: set to False? 
-            bias=True, 
-            device=None
-            )        
+            norm_first=True,   # TODO: set to False? 
+        )        
         
         self.encoder = nn.TransformerEncoder(
             encoder_layer, 
             num_layers=6
-            )
+        )
+        
+        # maximum number of burst components  
+        self.N_max = dim // len(inf_params)
 
         # tokens pass through down projection independently
         burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
 
-    def forward(self, x: torch.Tensor, tau:torch.Tensor, y: torch.Tensor):
+    def prepare_tokens(self, x_e: torch.Tensor, tau_e: torch.Tensor, y_e: torch.Tensor) -> torch.Tensor:
+        """Expand conditions to correct shape and concatenate to create tokens.
+        
+        Args:
+            x_e:   encoded input (parameters).
+            tau_e: encoded flow matching time.
+            y_e:   encoded condition (lightcurve).
+        
+        Returns:
+            torch.Tensor: Tokens of shape (bs, N_tokens, token_dim)
+        """
+        y_e = y_e.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
+        y_e = y_e.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
+
+        tau_e = tau_e.unsqueeze(1)              # (bs, ≥1)    -> (bs, 1, ≥1)
+        tau_e = tau_e.repeat(1, self.N_max, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
+
+        tokens = torch.cat([y_e, x_e, tau_e], dim=-1) 
+        return tokens
+    
+    def prepare_input(self, x: torch.Tensor) -> torch.Tensor:
+        """Split up x into N chunks and pass chunks through encoder independently. 
+        
+        Each chunk represents a burst component.
+
+        Args:
+            x (torch.Tensor): Parameter vector of shape (bs, dim).
+
+        Returns:
+            torch.Tensor: Tensor of shape (bs, N, theta_dim)
+        """
+        bs, dim = x.shape
+        x = x.reshape(bs, self.N_max, dim // self.N_max) # (bs, dim) -> (bs, N, dim/N) 
+       
+        # MLP takes final dimension as input
+        x   = self.theta_encoder(x) # (bs, N_bursts, theta_dim)
+        return x
+        
+    def forward(self, x: torch.Tensor, tau: torch.Tensor, y: torch.Tensor, N: torch.Tensor) -> torch.Tensor:
         """
         Args:
-        - x: (bs, dim) 
-        -tau: (bs, 1)
-        - y: (bs, time_dim) 
+            x   (torch.Tensor): Parameter values. Tensor of shape (bs, dim).
+            tau (torch.Tensor): Flow matching time. Tensor of shape (bs, 1).
+            y   (torch.Tensor): Condition vector (raw light curve). Tensor of shape (bs, raw_time_dim).
+            N   (torch.Tensor): Number of burst components in y. Tensor of shape (bs, 1).
+
         Returns:
-        - u_t^phi(x): (bs, dim)
+            $u_t^phi(x|y, N)$ (torch.Tensor): Tensor of shape (bs, dim)
         """
-        # do encodings
+        # encode conditions
         y   = self.time_seq_encoder(y)
         tau = self.tau_encoder(tau, self.tau_dim) 
 
-        # split up x into N chunks of burstparams
+        # reshape and encode input
         bs, dim = x.shape
-        N_bursts = x.shape[-1] // len(self.inf_params)
-        x = x.reshape(bs, N_bursts, dim // N_bursts) # (bs, dim) --> (bs, N, dim/N) TODO: only works when there's one param type 
+        x = self.prepare_input(x) 
 
-        # put chunks of x through encoder (independently) 
-        x   = self.theta_encoder(x) # (bs, N_bursts, N_params) (think this should be fine, MLP takes final dimension as input (?))
-        
-        # prepare y and tau to become part of token vectors (bs, N_tokens, token_dim) N_tokens = N_bursts
-        y = y.unsqueeze(1)            # (bs, ≥1)    -> (bs, 1, ≥1)
-        y = y.repeat(1, N_bursts, 1)  # (bs, 1, ≥1) -> (bs, N, ≥1)
-
-        tau = tau.unsqueeze(1)                # (bs, ≥1)    -> (bs, 1, ≥1)
-        tau = tau.repeat(1, N_bursts, 1)      # (bs, 1, ≥1) -> (bs, N, ≥1)
-
-        # encoder input (bs, N_tokens, token_dim)
-        tokens = torch.cat([y, x, tau], dim=-1) 
+        tokens = self.prepare_tokens(x, tau, y)
         _, _, token_dim = tokens.shape
 
         # add positional encoding
-        positional_encoding = sinusoidal_PE(N_bursts, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
+        positional_encoding = sinusoidal_PE(self.N_max, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
         tokens += positional_encoding
 
-        # go through encoder and project down
-        encoder_output = self.encoder(tokens)   # (bs, N, latent_dim)
-        down_projected = self.down_proj(encoder_output) # (bs, N, N_inf_params)
-        final_output    = down_projected.view(bs, dim) # (bs, N * N_inf_params)
+        # create mask of shape (bs, N_max) that is False for first N tokens
+        mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N 
 
+        # go through encoder and project down
+        encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
+        down_projected = self.down_proj(encoder_output)                    # (bs, N, N_inf_params)
+
+        final_output   = down_projected.view(bs, dim) # (bs, N * N_inf_params)
         return final_output 
     
     def get_config(self):
         """
-        Return dict with model setting for config file.
+        Returns dictionary with model settings.
         """
         config = {
-            "name":self._get_name(),
+            "name": self._get_name(),
             "init_params":
             {
-                "dim":self.dim,
+                "dim":       self.dim,
                 "inf_params":self.inf_params,
-                "time_dim":self.time_dim
+                "time_dim":  self.time_dim
             }
         }
         return config
 
+
 def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
-    """
-    Sinusoidal positional encoding.
+    """Sinusoidal positional encoding.
 
     Args:
         N (int): number of tokens.
@@ -136,56 +190,6 @@ def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     return pos_encoding  
 
 
-class FRBLightCurveTransformer(nn.Module):
-    """
-    Encodes univariate time series data with transformer encoder. 
-    """
-    def __init__(self,
-                 seq_len: int   = 1000,
-                 d_model: int   = 128,
-                 nhead: int     = 8,
-                 nlayers: int   = 4,
-                 latent_dim: int = 128):
-        
-        super().__init__()
-        
-        self.config = self.make_config(seq_len=seq_len, d_model=d_model, nhead=nhead, nlayers=nlayers, latent_dim=latent_dim)
-
-        self.input_proj = nn.Linear(1, d_model)
-        
-        # learnable positional embedding (seq_len, d_model)
-        self.pos_embed  = nn.Parameter(torch.randn(seq_len, d_model))
-        
-        encoder_layer   = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=nhead,
-            dim_feedforward=4*d_model,
-            batch_first=True,       # (B, L, D)
-            norm_first=True)
-        self.encoder    = nn.TransformerEncoder(encoder_layer, nlayers)
-        self.head       = nn.Linear(d_model, latent_dim)
-
-    def forward(self, x):          # x: (B, L)  
-        x = x.unsqueeze(-1)        # (B,L,1)
-        # x = x.transpose(1, 2)                       
-        h = self.input_proj(x) + self.pos_embed     # add positions  → (B,L,D)
-        h = self.encoder(h)                         # (B,L,D)
-        h = h.mean(dim=1)                           # simple pooling
-        return self.head(h)                         # (B,latent_dim)
-
-    def get_config(self):
-        return self.config
-    
-    def make_config(self, **kwargs):
-        config = {
-            "name": self._get_name(),
-            "init_params":
-            {
-                **kwargs
-            }
-        }
-        return config
-
 if __name__=="__main__":
     path = GuidedLinearProbabilityPath(
         p_simple=PeaktimePrior(),
@@ -198,8 +202,8 @@ if __name__=="__main__":
 
     batch_size=32
     z_batch, y_batch = path.p_data.sample(batch_size) # z, y ~ p_data
-    x0_batch = path.p_simple.sample(batch_size) # x_0 ~ p_simple
-    t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
+    x0_batch = path.p_simple.sample(batch_size)       # x_0 ~ p_simple
+    t_batch = torch.rand(batch_size, 1)               # t ~ U(0, 1) 
     x_batch = path.sample_conditional_path(x0_batch, z_batch, t_batch)
 
     transformer = TransformerGuidedField(dim=2, time_dim=128, time_seq_encoder=time_encoder, tau_encoder=tau_encoder, theta_encoder=theta_encoder)

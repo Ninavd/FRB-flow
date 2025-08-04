@@ -2,14 +2,14 @@ import torch
 
 class Model:
 
-    def __init__(self, time, ncomp, burstparams, ybkg=0.0):
-        self.time = time
-        self.n_components = ncomp
+    def __init__(self, time, ncomp, burstparams, ybkg=0.0, device=None):
+        self.time = time.to(device)
+        self.n_components = ncomp.to(device) # (bs, 1)
         
-        self.t0 = burstparams['t0']
-        self.amp = burstparams['amp']
-        self.rise = burstparams['rise']
-        self.skew = burstparams['skew']
+        self.t0 = burstparams['t0'].to(device)
+        log_amp = burstparams['amp'].to(device)
+        log_rise = burstparams['rise'].to(device)
+        self.skew = burstparams['skew'].to(device)
         self.ybkg = ybkg
 
         # find desired shape (bs, n)
@@ -19,8 +19,8 @@ class Model:
                 break
         
         # transform log rise and log amp
-        self.rise = torch.pow(torch.ones_like(self.rise) * 10, self.rise)
-        self.amp = torch.pow(torch.ones_like(self.amp) * 10, self.amp)
+        self.rise = torch.pow(torch.ones_like(log_rise) * 10, log_rise)
+        self.amp = torch.pow(torch.ones_like(log_amp) * 10, log_amp)
 
         # expand potentially fixed params
         self.t0 = torch.broadcast_to(self.t0, (bs, n)) if self.t0.shape != (bs, n) else self.t0
@@ -30,9 +30,15 @@ class Model:
 
         self.time = torch.broadcast_to(self.time, (bs, len(time)))
         
-        if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*ncomp:
-            raise ValueError("`burstparams` must contain all burst model parameters!")
+        # set amplitude of components > N to zero 
+        # allows for batched generation of curves with variable number of components
+        mask = torch.arange(1, n + 1, device=device).expand(bs, n) > self.n_components
+        self.amp[mask] = 0
 
+        if sum([len(param[0]) for param in [self.amp, self.rise, self.skew, self.t0]]) != 4*n:
+            raise ValueError("`burstparams` must contain all burst model parameters!")
+        
+        self.N_max = n
         self.flux = self.lightcurve_model()
 
     def single_component(self, k):
@@ -88,7 +94,7 @@ class Model:
         # reset the model
         flux = torch.zeros_like(self.time)
         
-        for k in range(self.n_components):
+        for k in range(self.N_max):
             flux += self.single_component(k)
             
         flux += self.ybkg

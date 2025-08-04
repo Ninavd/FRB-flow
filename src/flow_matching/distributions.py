@@ -5,7 +5,6 @@ import torch
 import torch.distributions as D
 
 from src.flow_matching.simulator import Model
-from src.flow_matching.helpers import choose_device
 
 class Sampleable(ABC):
     """
@@ -24,12 +23,15 @@ class Sampleable(ABC):
 
 class UniformPrior(Sampleable):
 
-    def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int):
+    def __init__(self, x_min, x_max, log: bool, enforce_order: bool, dim: int, device=None):
         self.x_min = x_min if not log else np.log10(x_min)
         self.x_max = x_max if not log else np.log10(x_max)
-        self.log = log # indicates if sample represents a power exponent
+        self.log = log
         self.enforce_order = enforce_order
         self.dim = dim
+        self.device = device
+
+        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order, dim=dim)
 
     def sample(self, num_samples: int) -> torch.Tensor:
         """
@@ -40,7 +42,7 @@ class UniformPrior(Sampleable):
         """
         shape = (num_samples, self.dim)
         
-        samples = (self.x_max - self.x_min) * torch.rand(size=shape) + self.x_min 
+        samples = (self.x_max - self.x_min) * torch.rand(size=shape, device=self.device) + self.x_min 
         
         if self.enforce_order:
             sorted_samples, _ = torch.sort(samples, dim=1)
@@ -48,24 +50,43 @@ class UniformPrior(Sampleable):
         
         return samples
     
-    def get_config(self):
+    def make_config(self, **kwargs):
         config = {
             "name":self.__class__.__name__, 
             "init_params":
             {
-                "x_min"        :self.x_min,
-                "x_max"        :self.x_max,
-                "log"          :self.log,
-                "enforce_order":self.enforce_order,
-                "dim"          :self.dim
-            }           
+                **kwargs
+            },        
         }
-        return config
+        return config  
     
+    def get_config(self):
+        return self.config
+
+class DiscreteUniform(Sampleable):
+    """
+    One-dimensional discrete uniform distribution.
+    """
+    
+    def __init__(self, low: int, high: int, device=None):
+        super().__init__()
+        self.low = low 
+        self.high = high
+        self.device = device
+
+    def sample(self, num_samples: int):
+        return torch.randint(self.low, self.high + 1, (num_samples, 1), device=self.device)
+        
 class CompositePrior(Sampleable):
-    def __init__(self, priors: dict[UniformPrior]):
+    def __init__(self, priors: dict[UniformPrior], device=None):
         self.priors = priors
         self.dim = sum([priors[key].dim for key in priors])
+        self.device = device 
+        self.set_prior_device()
+    
+    def set_prior_device(self):
+        for prior in self.priors.values():
+            prior.device = self.device
 
     def sample(self, num_samples):
         """
@@ -75,7 +96,7 @@ class CompositePrior(Sampleable):
         Returns: 
             torch.Tensor: (bs, dim)
         """
-        samples = torch.zeros((num_samples, self.dim))
+        samples = torch.zeros((num_samples, self.dim), device=self.device)
         cursor = 0
         for key in self.priors:
             prior = self.priors[key]
@@ -119,14 +140,15 @@ class Posterior(Sampleable):
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
     """
 
-    def __init__(self, model_params, inf_params, prior: CompositePrior):
+    def __init__(self, model_params, inf_params, prior: CompositePrior, N_prior=None):
         super().__init__()
         
         self.model_params = model_params # fixed burst parameters
         self.inf_params = inf_params
         self.prior = prior
-        self.device = choose_device()
-    
+        self.device = prior.device
+        self.N_prior = DiscreteUniform(1, model_params['ncomp'], device=prior.device) if N_prior is None else N_prior
+
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
         """
         Args:
@@ -140,29 +162,31 @@ class Posterior(Sampleable):
 
         burstparams = self.model_params['burstparams']
         burstparams = self.edit_burstparams(burstparams, self.prior.samples_as_dict(prior_samples))
+        
+        Ns = self.N_prior.sample((num_samples))
+        
+        simulations = self.light_curve_sample(burstparams=burstparams, ncomp=Ns)
 
-        simulations = self.light_curve_sample(burstparams=burstparams)
-
-        return prior_samples, simulations
+        return prior_samples, simulations, Ns
     
-    def light_curve_sample(self, burstparams) -> torch.Tensor:
+    def light_curve_sample(self, burstparams, ncomp) -> torch.Tensor:
         """
         Simulates lightcurve for given parameters.
         """
         # initialize burst model
         model = Model(
             time=self.model_params['time'], 
-            ncomp=self.model_params['ncomp'], 
+            ncomp=ncomp, 
             ybkg=self.model_params['ybkg'], 
-            burstparams=burstparams
+            burstparams=burstparams,
+            device=self.device
             )
         
         # simulate noisy light curve
         model = model.get_flux()
-        model = model.to(self.device)
         x_counts = torch.poisson(model)
 
-        return torch.Tensor(x_counts)
+        return x_counts
     
     def edit_burstparams(self, burstparams, prior_sample):
         """
