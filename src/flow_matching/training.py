@@ -50,8 +50,6 @@ class Trainer(ABC):
         save_checkpoint=True, 
         batch_size: int = 256, 
         job_id=None, 
-        mean=None, 
-        std=None,
         fixed_N: bool=False,
         **kwargs
         ) -> torch.Tensor:
@@ -83,13 +81,12 @@ class Trainer(ABC):
         # (optional) create run folder and save settings
         if save_checkpoint:
             self.save_path = create_run_folder("../checkpoints", job_id)
-            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path, mean, std, fixed_N, **kwargs)
+            self.save_config_file(num_epochs, lr, clip, batch_size, self.save_path, fixed_N, **kwargs)
         
         # train loop
         progress_bar = tqdm(range(num_epochs))
         for epoch in progress_bar:
             opt.zero_grad()
-
             loss = self.get_train_loss(device, batch_size, **kwargs)
             losses[epoch] = loss
             loss.backward()

@@ -228,7 +228,8 @@ def main(N: int,
          False if no_save else True,
          batch_size,
          job_id,
-         mean=MEAN, std=STD, fixed_N=fixed_N
+         fixed_N=fixed_N,
+         mean=MEAN, std=STD
          )
 
     print('\n')
