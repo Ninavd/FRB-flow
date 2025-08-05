@@ -315,7 +315,7 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         cross_entropy_loss = self.cross_entropy(N_logits, (N_true - 1).view(-1))
         return MSE + cross_entropy_loss 
     
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
         """
         Save yaml with training and model settings
         """
@@ -337,7 +337,9 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
                 "gradient_clip": clip,
                 "optimizer"    : "adam",
                 "sample_mean"  : [float(m) for m in mean],
-                "sample_std"   : [float(s) for s in std]
+                "sample_std"   : [float(s) for s in std],
+                "fixed_N"      : fixed_N
+
             },
             "path": {
                 "name"    :self.path.get_config(),
