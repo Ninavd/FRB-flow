@@ -102,7 +102,7 @@ class TransformerGuidedField(nn.Module):
     def prepare_input(self, x: torch.Tensor) -> torch.Tensor:
         """Split up x into N chunks and pass chunks through encoder independently. 
         
-        Each chunk represents a burst component.
+        Each token represents a burst component.
 
         Args:
             x (torch.Tensor): Parameter vector of shape (bs, dim).
@@ -110,9 +110,12 @@ class TransformerGuidedField(nn.Module):
         Returns:
             torch.Tensor: Tensor of shape (bs, N, theta_dim)
         """
+        # x = [t0_1 .... t0_n, amp_1, amp_2, ... amp_n, ...]
+        # -> view as 2D matrix and transpose to get:
+        # x = [[t0_1, amp_1, rise_1, skew_1], .... .[t0_n, amp_n, rise_n, skew_n]]
         bs, dim = x.shape
-        x = x.reshape(bs, self.N_max, dim // self.N_max) # (bs, dim) -> (bs, N, dim/N) 
-       
+        x = x.view(bs, dim // self.N_max, self.N_max).transpose(1, 2) 
+
         # MLP takes final dimension as input
         x   = self.theta_encoder(x) # (bs, N_bursts, theta_dim)
         return x
@@ -149,8 +152,12 @@ class TransformerGuidedField(nn.Module):
         # go through encoder and project down
         encoder_output = self.encoder(tokens, src_key_padding_mask=mask)   # (bs, N, latent_dim)
         down_projected = self.down_proj(encoder_output)                    # (bs, N, N_inf_params)
+        
+        # want final vector to be to [t0_1, ..., t0_n, amp_1, ..., amp_n, ... etc]
+        down_projected = down_projected.transpose(1, 2)
 
-        final_output   = down_projected.view(bs, dim) # (bs, N * N_inf_params)
+        final_output = down_projected.reshape(bs, dim) # (bs, N * N_inf_params)
+        
         return final_output 
     
     def get_config(self):
