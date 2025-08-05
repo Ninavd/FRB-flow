@@ -134,7 +134,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, mean, std, fixed_N):
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
         """
         Save yaml with training and model settings
         """
