@@ -29,14 +29,21 @@ def model_size_b(model: nn.Module) -> int:
 def count_model_parameters(model:nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def get_sample_mean_std(prior, num_samples: int, device=None):
+def get_sample_mean_std(prior, N, inf_params, num_samples: int, device=None):
     """"
     Get estimate of sample mean and standard deviation
     based on num_samples, f.e. for standardization. 
     """
     samples = prior.sample(num_samples).to(device)
-    mean =  torch.mean(samples, dim=0)
-    std = torch.std(samples, dim=0)
+    samples = samples.reshape(num_samples, len(inf_params), N)
+
+    # average over samples and identical params
+    mean = torch.mean(samples, dim=[0, -1]) # len(inf_params), 
+    std = torch.std(samples, dim=[0, -1])
+
+    # share mean between same params, f.e. for amp_1 ... amp_n
+    mean = mean.repeat_interleave(N)
+    std = std.repeat_interleave(N)
     return mean, std
 
 def build_mlp(dims: List[int], activation: Type[nn.Module] = nn.SiLU):

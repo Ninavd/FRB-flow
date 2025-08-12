@@ -164,7 +164,7 @@ def main(N: int,
         p_data   = posterior
     )
 
-    MEAN, STD = get_sample_mean_std(prior, 10000, device=device)
+    MEAN, STD = get_sample_mean_std(prior, N, inf_params, num_samples=10000, device=device)    
 
     # dimension of vector field
     DIM = N * len(inf_params)
