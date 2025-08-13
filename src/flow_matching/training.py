@@ -2,6 +2,7 @@ import numpy as np
 import os
 import torch 
 import torch.nn as nn
+import wandb
 import yaml 
 
 from abc import ABC, abstractmethod
@@ -77,6 +78,8 @@ class Trainer(ABC):
         
         self.model.train()
         losses = np.zeros(num_epochs)
+        MSE_losses = np.zeros(num_epochs)
+        CEL_losses = np.zeros(num_epochs)
 
         # (optional) create run folder and save settings
         if save_checkpoint:
@@ -87,7 +90,16 @@ class Trainer(ABC):
         progress_bar = tqdm(range(num_epochs))
         for epoch in progress_bar:
             opt.zero_grad()
-            loss = self.get_train_loss(device, batch_size, **kwargs)
+            
+            if not fixed_N:
+                MSE, CEL = self.get_train_loss(device, batch_size, **kwargs)
+                MSE_losses[epoch] = MSE
+                CEL_losses[epoch] = CEL
+                loss = MSE + CEL
+            else:
+                loss = self.get_train_loss(device, batch_size, **kwargs)
+                MSE, CEL = loss, 0
+
             losses[epoch] = loss
             loss.backward()
 
@@ -99,22 +111,24 @@ class Trainer(ABC):
             ema.update() if use_ema else None 
 
             # save checkpoint every 100 epochs
+            if save_checkpoint:
+                wandb.log({'loss':loss, 'MSE_loss':MSE, 'CEL_loss':CEL, 'lr':lr_scheduler.get_last_lr()[0]})
             if save_checkpoint and (epoch+1) % 100 == 0:
-                self.save_checkpoint(epoch, opt, losses)
+                self.save_checkpoint(epoch, opt, losses, MSE_losses, CEL_losses)
                 self.save_ema_checkpoint(ema) if use_ema else None
 
             progress_bar.set_description(f'Epoch {epoch}, loss: {loss.item():.2e}, lr: {lr_scheduler.get_last_lr()[0]:.2e}')
 
         # save final models
         if save_checkpoint:
-            self.save_checkpoint(epoch, opt, losses)
+            self.save_checkpoint(epoch, opt, losses, MSE_losses, CEL_losses)
             self.save_ema_checkpoint(ema) if use_ema else None
 
         # finish
         self.model.eval()
         return losses
     
-    def save_checkpoint(self, epoch, optimizer, losses):
+    def save_checkpoint(self, epoch, optimizer, losses, MSE_losses, CEL_losses):
         """
         Saves training checkpoint.
         """
@@ -124,6 +138,8 @@ class Trainer(ABC):
             "model_state_dict"     : self.model.state_dict(),
             "optimizer_state_dict" : optimizer.state_dict(),
             "losses"               : losses,
+            "MSE_loss"             : MSE_losses, 
+            "CEL_loss"             : CEL_losses,
             "timestamp"            : timestamp
         }
         
@@ -134,10 +150,7 @@ class Trainer(ABC):
         filename = f"EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
-        """
-        Save yaml with training and model settings
-        """
+    def make_config(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
         try:
             t_encoder_config = self.model.time_seq_encoder.get_config()
         except AttributeError:
@@ -166,7 +179,13 @@ class Trainer(ABC):
             }
 
         }
+        return config
 
+    def save_config_file(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
+        """
+        Save yaml with training and model settings.
+        """
+        config = self.make_config(num_epochs, lr, clip, batch_size, path, fixed_N, mean, std)
         with open(os.path.join(path, "config.yaml"), "w") as f:
             yaml.dump(config, f, sort_keys=False)
 
@@ -313,12 +332,9 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
 
         # classifier loss
         cross_entropy_loss = self.cross_entropy(N_logits, (N_true - 1).view(-1))
-        return MSE + cross_entropy_loss 
+        return MSE, cross_entropy_loss 
     
-    def save_config_file(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
-        """
-        Save yaml with training and model settings
-        """
+    def make_config(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
         try:
             t_encoder_config = self.vector_field.time_seq_encoder.get_config()
         except AttributeError:
@@ -348,6 +364,4 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
             },
             "classifier": self.N_classifier.get_config()
         }
-
-        with open(os.path.join(path, "config.yaml"), "w") as f:
-            yaml.dump(config, f, sort_keys=False)
+        return config

@@ -4,6 +4,7 @@ import sys
 
 sys.path.append('..')
 from copy import deepcopy
+from datetime import datetime
 from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
@@ -21,6 +22,7 @@ from src.flow_matching.transformer import TransformerGuidedField
 
 import numpy as np
 import torch
+import wandb
 
 from src.flow_matching.plotting import evaluation_plots
 from src.flow_matching.helpers import choose_device, build_mlp, get_sample_mean_std
@@ -218,7 +220,16 @@ def main(N: int,
         and sample {inf_params} from the prior\n
         """
     )
-    
+
+    # start a new wandb run to track this script
+    if not no_save:
+        run = wandb.init(
+            entity = "ninavd-university-of-amsterdam",
+            project= "frb-flow",
+            config = trainer.make_config(epochs, lr, clip, batch_size, path, fixed_N, MEAN, STD),
+            name   = f"{job_id if job_id else ''}_" + datetime.now().strftime("%d_%m_%H%M")
+        )
+
     losses = trainer.train(
          epochs,
          device,
@@ -233,6 +244,8 @@ def main(N: int,
          )
 
     print('\n')
+
+    wandb.finish() if not no_save else None
 
     # ============================
     #         EVALUATION     
