@@ -127,7 +127,7 @@ def main(N: int,
 
     # define the priors
     PRIORS = {
-        "t0"  : UniformPrior(x_min=0.2,  x_max=0.8, log=False, enforce_order=True, dim=N),
+        "t0"  : UniformPrior(x_min=0.2,  x_max=0.8, log=False, enforce_order=False, dim=N),
         "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
         "rise": UniformPrior(x_min=1e-3, x_max=0.6, log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
@@ -245,7 +245,7 @@ def main(N: int,
 
     print('\n')
 
-    wandb.finish() if not no_save else None
+
 
     # ============================
     #         EVALUATION     
@@ -263,6 +263,15 @@ def main(N: int,
         inf_params, N, MODELPARAMS, MEAN, STD, save_path, show_plots
     )
 
+    # save eval plots in wandb
+    if not no_save:
+
+        for filename in os.listdir(save_path):
+            if 'loss' not in filename:
+                filepath = os.path.join(save_path, filename)
+                wandb.log({filename: wandb.Image(filepath)})
+    
+    wandb.finish() if not no_save else None
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
