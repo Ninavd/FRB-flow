@@ -404,3 +404,5 @@ FodyWeavers.xsd
 checkpoints/*
 
 .ipynb_checkpoints
+
+wandb
