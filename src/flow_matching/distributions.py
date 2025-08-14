@@ -33,10 +33,11 @@ class UniformPrior(Sampleable):
 
         self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order, dim=dim)
 
-    def sample(self, num_samples: int) -> torch.Tensor:
+    def sample(self, num_samples: int, Ns=None) -> torch.Tensor:
         """
         Args:
-            num_samples: number of samples to generate
+            num_samples: number of samples to generate.
+            Ns (torch.Tensor or None): Samples from N prior, optional if enfore_order=False.
         Returns:
             torch.Tensor: shape (num_samples, dim)
         """
@@ -45,7 +46,12 @@ class UniformPrior(Sampleable):
         samples = (self.x_max - self.x_min) * torch.rand(size=shape, device=self.device) + self.x_min 
         
         if self.enforce_order:
+            mask = torch.arange(self.dim, device=self.device).expand(samples.shape) >= Ns
+            temp_values = samples[mask]
+            samples[mask] = self.x_max
+
             sorted_samples, _ = torch.sort(samples, dim=1)
+            sorted_samples[mask] = temp_values
             return sorted_samples
         
         return samples
@@ -88,7 +94,7 @@ class CompositePrior(Sampleable):
         for prior in self.priors.values():
             prior.device = self.device
 
-    def sample(self, num_samples):
+    def sample(self, num_samples, **kwargs):
         """
         Sample composite prior. 
         Samples from each prior and concatenates result in a Tensor.
@@ -100,7 +106,7 @@ class CompositePrior(Sampleable):
         cursor = 0
         for key in self.priors:
             prior = self.priors[key]
-            partial_sample = prior.sample(num_samples)
+            partial_sample = prior.sample(num_samples, **kwargs)
             samples[:, cursor : cursor + prior.dim] = partial_sample
             cursor = cursor + prior.dim
         return samples
@@ -158,12 +164,11 @@ class Posterior(Sampleable):
             torch.Tensor: shape (num_samples, 100)
         """
         # parameter samples 
-        prior_samples = self.prior.sample((num_samples))
+        Ns = self.N_prior.sample((num_samples))
+        prior_samples = self.prior.sample((num_samples), Ns=Ns)
 
         burstparams = self.model_params['burstparams']
         burstparams = self.edit_burstparams(burstparams, self.prior.samples_as_dict(prior_samples))
-        
-        Ns = self.N_prior.sample((num_samples))
         
         simulations = self.light_curve_sample(burstparams=burstparams, ncomp=Ns)
 

@@ -159,14 +159,16 @@ def main(N: int,
     N_min = 1 if not fixed_N else N 
 
     prior     = CompositePrior(PRIOR_DICT, device=device)
-    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior=DiscreteUniform(N_min, N, device=device))
+    N_prior   = DiscreteUniform(N_min, N, device=device)
+    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior)
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
         p_data   = posterior
     )
 
-    MEAN, STD = get_sample_mean_std(prior, N, inf_params, num_samples=10000, device=device)    
+    N_prior_samples = N_prior.sample(10_000)
+    MEAN, STD = get_sample_mean_std(prior, N, inf_params, N_prior_samples, num_samples=10_000, device=device)    
 
     # dimension of vector field
     DIM = N * len(inf_params)

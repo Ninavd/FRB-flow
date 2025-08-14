@@ -29,12 +29,12 @@ def model_size_b(model: nn.Module) -> int:
 def count_model_parameters(model:nn.Module) -> int:
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def get_sample_mean_std(prior, N, inf_params, num_samples: int, device=None):
+def get_sample_mean_std(prior, N, inf_params, N_prior_samples, num_samples: int, device=None):
     """"
     Get estimate of sample mean and standard deviation
     based on num_samples, f.e. for standardization. 
     """
-    samples = prior.sample(num_samples).to(device)
+    samples = prior.sample(num_samples, Ns=N_prior_samples).to(device)
     samples = samples.reshape(num_samples, len(inf_params), N)
 
     # average over samples and identical params
