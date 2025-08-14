@@ -231,8 +231,8 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
     def prepare_batches(self, device, batch_size, **kwargs):
         # samples
-        z_batch, y_batch, Ns = self.path.p_data.sample(batch_size, Ns=N_batch) # z, y ~ p_data
-        x0_batch = self.path.p_simple.sample(batch_size) # x_0 ~ p_simple
+        z_batch, y_batch, Ns = self.path.p_data.sample(batch_size) # z, y ~ p_data
+        x0_batch = self.path.p_simple.sample(batch_size, Ns=N_batch) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
         # t ~ t^(1/1+a) (inverse sampling)
