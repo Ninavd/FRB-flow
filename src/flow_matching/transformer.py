@@ -24,7 +24,12 @@ class TransformerGuidedField(nn.Module):
             time_dim: int = 1000, 
             time_seq_encoder: nn.Module | None = None,
             tau_encoder: nn.Module | None = None, 
-            theta_encoder: nn.Module | None = None
+            theta_encoder: nn.Module | None = None,
+            encoder_kwargs = dict(
+                nhead=4, 
+                dim_feedforward=1024, 
+                dropout=0.0),
+            n_layers = 6
             ):
         """Initializes the vector field.
    
@@ -35,13 +40,12 @@ class TransformerGuidedField(nn.Module):
             time_seq_encoder (nn.Module or None): Trainable encoder compressing the time series.
             tau_encoder (nn.Module or None): Should inflate flow matching time to half of `time_dim`.
             theta_encoder (nn.Module or None): Inflates parameter vector theta.
+            encoder_kwargs (dict): arguments passed to `torch.nn.TransformerEncoderLayer`.
+            n_layers (int): numeber of sequential encoder layers.
         """
         super().__init__()
-        self.dim = dim
-        self.inf_params = inf_params
 
         # encoding dimensions
-        self.time_dim  = time_dim   # length of (encoded) lightcurve
         self.tau_dim   = time_dim // 2 if tau_encoder else 1
         self.theta_dim = time_dim // 2 if theta_encoder else dim
 
@@ -55,21 +59,19 @@ class TransformerGuidedField(nn.Module):
         self.tau_encoder      = tau_encoder      if tau_encoder      else lambda x, _: x
         self.theta_encoder    = theta_encoder(self.theta_dim) if theta_encoder else lambda x: x 
 
-        token_dim = self.theta_dim + self.time_dim + self.tau_dim
+        token_dim = self.theta_dim + time_dim + self.tau_dim
 
         encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=token_dim,
-            nhead=4, 
-            dim_feedforward=4 * token_dim, 
-            dropout=0.1, 
             activation=nn.GELU(), 
             batch_first=True, 
-            norm_first=True,   # TODO: set to False? 
+            norm_first=True,# TODO: set to False? 
+            **encoder_kwargs, 
         )        
         
         self.encoder = nn.TransformerEncoder(
             encoder_layer, 
-            num_layers=6
+            num_layers=n_layers
         )
         
         # maximum number of burst components  
@@ -78,6 +80,8 @@ class TransformerGuidedField(nn.Module):
         # tokens pass through down projection independently
         burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
+
+        self.config = self.make_config(encoder_kwargs, n_layers=n_layers, dim=dim, inf_params=inf_params, time_dim=time_dim)
 
     def prepare_tokens(self, x_e: torch.Tensor, tau_e: torch.Tensor, y_e: torch.Tensor) -> torch.Tensor:
         """Expand conditions to correct shape and concatenate to create tokens.
@@ -160,21 +164,25 @@ class TransformerGuidedField(nn.Module):
         
         return final_output 
     
-    def get_config(self):
+    def make_config(self, encoder_kwargs, **kwargs):
         """
-        Returns dictionary with model settings.
+        Create dictionary with model settings.
         """
         config = {
             "name": self._get_name(),
             "init_params":
             {
-                "dim":       self.dim,
-                "inf_params":self.inf_params,
-                "time_dim":  self.time_dim
+                **kwargs,
+                'encoder_kwargs': encoder_kwargs
             }
         }
         return config
 
+    def get_config(self):
+        """
+        Returns dictionary with model settings.
+        """
+        return self.config
 
 def sinusoidal_PE(N: int, d_model: int, device=None) -> torch.Tensor:
     """Sinusoidal positional encoding.
