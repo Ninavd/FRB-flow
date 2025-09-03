@@ -1,0 +1,17 @@
+N: 1
+inf_params:
+- t0
+- amp
+- rise
+- skew
+burstparams:
+  t0:
+  - 0.3
+  amp:
+  - 2.0
+  rise:
+  - -1.5228787452803376
+  skew:
+  - 5.0
+runtime: 29.698943614959717
+iterations: 4500
