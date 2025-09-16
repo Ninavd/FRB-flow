@@ -235,7 +235,8 @@ def evaluation_plots(
         x_counts = simulator.simulate_burst() 
         
         # we condition all prior samples on same simulation
-        simulations = torch.tensor(x_counts, device=device, dtype=torch.float).repeat(num_samples, 1)
+        AVG_AMP = 150
+        simulations = torch.tensor(x_counts / AVG_AMP, device=device, dtype=torch.float).repeat(num_samples, 1)
         
         # number of snapshots to plot
         num_marginals = 5   

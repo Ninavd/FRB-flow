@@ -247,6 +247,10 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         # standardize
         x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
 
+        # scale lightcurve
+        AVG_AMP = 150
+        y_batch = y_batch / AVG_AMP
+
         return x0_batch, x_batch, z_batch, t_batch, y_batch, Ns
 
     def MSE(self, differences):
@@ -298,6 +302,10 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         
         # standardize
         x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
+
+        # scale lightcurve
+        AVG_AMP = 150
+        y_batch = y_batch / AVG_AMP 
 
         return x0_batch, x_batch, z_batch, t_batch, y_batch, N_batch
     
