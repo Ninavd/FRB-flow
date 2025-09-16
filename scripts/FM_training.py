@@ -52,8 +52,8 @@ def pick_timeseries_encoder(type: str) -> tuple[int, torch.nn.Module | None]:
         time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
 
     elif type == "UNET":
-        latent_dim = 64
-        time_seq_encoder = UNetEncoder()
+        latent_dim = 128
+        time_seq_encoder = UNetEncoder(latent_dim=latent_dim)
 
     else:
         latent_dim = 1000
@@ -90,11 +90,14 @@ def pick_theta_encoder(encode: bool, inf_params: list[str], model: str, dim: int
 
 def main(N: int,
          inf_params: list[str],
+         noise: str,
+         ybkg: float,
          model: str,
          encoder: str,
          encode_tau: bool,
          encode_theta: bool,
          combine_mode: str,
+         add_pos_enc: bool,
          fixed_N:bool,
          epochs: int, batch_size: int, lr: float, clip: int | None, EMA: bool,
          num_samples: int, show_plots: bool, no_save: bool, job_id: int | None
@@ -104,11 +107,14 @@ def main(N: int,
     Args:
         N (int):                 Number of components.
         inf_params (list of str):List of inference parameter names.
+        noise (str):             Type of noise added to flux (poisson or gaussian).
+        ybkg (float):            Background rate added to flux.
         model (str):             Model architecture name.
         encoder (str):           Time series encoder type.
         encode_tau (bool):       Whether to encode tau.
         encode_theta (bool):     Whether to encode theta.
         combine_mode (str):      Method for injecting conditions.
+        add_pos_enc (bool):      Use positional encoding in transformer. Auto-selects sorted t0 prior.
         epochs (int):            Number of training epochs.
         batch_size (int):        Size of each training batch.
         lr (float):              Learning rate.
@@ -126,11 +132,13 @@ def main(N: int,
     device = choose_device()
 
     # define the priors
+    enforce_order = True if add_pos_enc else False
+
     PRIORS = {
-        "t0"  : UniformPrior(x_min=0.2,  x_max=0.8, log=False, enforce_order=False, dim=N),
-        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
-        "rise": UniformPrior(x_min=1e-3, x_max=0.6, log=True, enforce_order=False, dim=N),
-        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
+        "t0"  : UniformPrior(x_min=0.2,  x_max=0.8, log=False, enforce_order=enforce_order, dim=N, device=device),
+        "amp" : UniformPrior(x_min=1,   x_max=300, log=True,  enforce_order=False, dim=N, device=device),
+        "rise": UniformPrior(x_min=1e-3, x_max=0.1, log=True, enforce_order=False, dim=N, device=device),
+        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N, device=device)
     }
 
     # only use priors of learnable parameters
@@ -138,7 +146,7 @@ def main(N: int,
 
     # standard burst parameter values when fixed
     TIME = torch.linspace(0, 1.0, 1000)
-    YBKG = 5.0
+    YBKG = ybkg
     AMP  = 100
     RISE = 0.03
     SKEW = 5
@@ -160,7 +168,7 @@ def main(N: int,
 
     prior     = CompositePrior(PRIOR_DICT, device=device)
     N_prior   = DiscreteUniform(N_min, N, device=device)
-    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior)
+    posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior, noise)
 
     path = GuidedLinearProbabilityPath(
         p_simple = prior,
@@ -195,7 +203,8 @@ def main(N: int,
                          latent_dim,
                          time_seq_encoder,
                          tau_encoder,
-                         theta_encoder
+                         theta_encoder,
+                         add_pos_encoding=add_pos_enc
                          )
 
     if fixed_N:
@@ -218,7 +227,7 @@ def main(N: int,
     print("CURRENT DEVICE: ", device)
     print(
         f"""
-        \n Training data will have {'a maximum' if not fixed_N else ''} {N} burst component{'' if N == 1 else 's'}
+        \n Training data will have {'at maximum ' if not fixed_N else ''} {N} burst component{'' if N == 1 else 's'}
         and sample {inf_params} from the prior\n
         """
     )
@@ -282,10 +291,13 @@ if __name__=="__main__":
     valid_encoders = ["CNN", "THIN", "MLP", "NULL", "UNET"]
     valid_combine_modes = ["GLU", "concat"]
     valid_inf_params = {"t0", "amp", "skew", "rise"}
+    noise_options = ["gaussian", "poisson"]
 
     # training data
     parser.add_argument("-N", "--ncomp", type=int, default=2, help="Number of burst components in training data")
     parser.add_argument("-i", "--inf_params", nargs='+', help="List of inference parameter names to learn from training data.", required=True, choices=valid_inf_params)
+    parser.add_argument("--noise", type=str, help="Type of noise added to training data (poisson or gaussian).", required=True, choices=noise_options)
+    parser.add_argument("--ybkg", type=float, help="Background rate in training data. Default is 5", default=5)
 
     # ML model
     parser.add_argument("-m", "--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer", choices=valid_models)
@@ -295,9 +307,10 @@ if __name__=="__main__":
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for theta (parameter vector)")
  
     parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [GLU or concat]", choices=valid_combine_modes)
-    parser.add_argument("--fixed_N", action="store_true", help="Train on data with fixed number of burst components.")
+    parser.add_argument("--add_pos_enc", action="store_true", help="When selected model is transformer, use positional encoding. This also auto-selects a sorted t0 prior.")
 
     # training
+    parser.add_argument("--fixed_N", action="store_true", help="Train on data with fixed number of burst components.")
     parser.add_argument("-e", "--epochs", type=int, default=100_000, help="epochs")
     parser.add_argument("-b", "--batch_size", type=int, default=512, help="batch size")
     parser.add_argument("-l", "--lr", type=float, default=5e-4, help="learning rate")
@@ -315,11 +328,11 @@ if __name__=="__main__":
 
     # check correctness of args
     if len(set(args.inf_params) & valid_inf_params) != len(args.inf_params):
-        print(f"inference parameters argument {args.inf_params} invalid, must be in {valid_inf_params}")
+        print(f"inference parameters argument {args.inf_params} invalid, must be in {valid_inf_params} and contain no doubles")
     else:
         main(
-            args.ncomp, args.inf_params, 
-            args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode, args.fixed_N,
-            args.epochs, args.batch_size, args.lr, args.clip, args.EMA, 
+            args.ncomp, args.inf_params, args.noise, args.ybkg,
+            args.model, args.encoder, args.encode_tau, args.encode_theta, args.combine_mode, args.add_pos_enc,
+            args.fixed_N, args.epochs, args.batch_size, args.lr, args.clip, args.EMA, 
             args.num_samples, args.show_plots, args.no_save, args.job_id
             )
