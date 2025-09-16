@@ -31,7 +31,7 @@ class UniformPrior(Sampleable):
         self.dim = dim
         self.device = device
 
-        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order, dim=dim)
+        self.config = self.make_config(x_min=x_min, x_max=x_max, log=log, enforce_order=enforce_order, dim=dim, device=device if type(device) == str else device.type)
 
     def sample(self, num_samples: int, Ns=None) -> torch.Tensor:
         """
@@ -146,7 +146,7 @@ class Posterior(Sampleable):
     Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
     """
 
-    def __init__(self, model_params, inf_params, prior: CompositePrior, N_prior=None):
+    def __init__(self, model_params, inf_params, prior: CompositePrior, N_prior=None, noise='poisson'):
         super().__init__()
         
         self.model_params = model_params # fixed burst parameters
@@ -154,6 +154,7 @@ class Posterior(Sampleable):
         self.prior = prior
         self.device = prior.device
         self.N_prior = DiscreteUniform(1, model_params['ncomp'], device=prior.device) if N_prior is None else N_prior
+        self.noise = noise
 
     def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
         """
@@ -189,7 +190,11 @@ class Posterior(Sampleable):
         
         # simulate noisy light curve
         model = model.get_flux()
-        x_counts = torch.poisson(model)
+        
+        if self.noise == 'poisson':
+            x_counts = torch.poisson(model)
+        elif self.noise == 'gaussian':
+            x_counts = model + torch.randn_like(model) 
 
         return x_counts
     
@@ -218,6 +223,7 @@ class Posterior(Sampleable):
             {
                 "model_params": model_params,
                 "inf_params": self.inf_params,
+                "noise":self.noise,
                 "prior": self.prior.__class__.__name__
             }
         }
