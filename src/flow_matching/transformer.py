@@ -29,7 +29,8 @@ class TransformerGuidedField(nn.Module):
                 nhead=4, 
                 dim_feedforward=1024, 
                 dropout=0.0),
-            n_layers = 6
+            n_layers = 6,
+            add_pos_encoding=True
             ):
         """Initializes the vector field.
    
@@ -42,6 +43,7 @@ class TransformerGuidedField(nn.Module):
             theta_encoder (nn.Module or None): Inflates parameter vector theta.
             encoder_kwargs (dict): arguments passed to `torch.nn.TransformerEncoderLayer`.
             n_layers (int): numeber of sequential encoder layers.
+            add_pos_encoding (bool): Add positional encoding to tokens.
         """
         super().__init__()
 
@@ -81,7 +83,8 @@ class TransformerGuidedField(nn.Module):
         burst_params = len(inf_params)  
         self.down_proj = nn.Linear(token_dim, burst_params) 
 
-        self.config = self.make_config(encoder_kwargs, n_layers=n_layers, dim=dim, inf_params=inf_params, time_dim=time_dim)
+        self.add_pos_encoding = add_pos_encoding
+        self.config = self.make_config(encoder_kwargs, n_layers=n_layers, add_pos_encoding=add_pos_encoding, dim=dim, inf_params=inf_params, time_dim=time_dim)
 
     def prepare_tokens(self, x_e: torch.Tensor, tau_e: torch.Tensor, y_e: torch.Tensor) -> torch.Tensor:
         """Expand conditions to correct shape and concatenate to create tokens.
@@ -147,8 +150,9 @@ class TransformerGuidedField(nn.Module):
         _, _, token_dim = tokens.shape
 
         # add positional encoding
-        positional_encoding = sinusoidal_PE(self.N_max, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
-        tokens += positional_encoding
+        if self.add_pos_encoding:
+            positional_encoding = sinusoidal_PE(self.N_max, token_dim, tokens.device).unsqueeze(0).repeat(bs, 1, 1)
+            tokens += positional_encoding
 
         # create mask of shape (bs, N_max) that is False for first N tokens
         mask = torch.arange(self.N_max, device=N.device).expand(len(N), self.N_max) >= N 

@@ -79,6 +79,8 @@ def empty_model_from_config(config):
     kwargs['tau_encoder']   = TAU_ENCODERS[config["tau_encoder"]]
     kwargs['theta_encoder'] = THETA_ENCODERS[config["theta_encoder"]]
 
+    if not config["model"]["init_params"].get("encoder_kwargs"):
+        print('NOTE: default arguments used for encoder layer')
     return model_class(**kwargs)
 
 def empty_classifier_from_config(config):
