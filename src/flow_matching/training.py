@@ -242,7 +242,7 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         t_batch = torch.pow(u, power)
 
         # standardize targets
-        z_batch = self.scale_input([z_batch], **kwargs)
+        z_batch = self.scale_input([z_batch], **kwargs)[0]
 
         # interpolate initial state and standardized target
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
@@ -298,7 +298,7 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         t_batch = torch.pow(u, power)
 
         # standardize targets
-        z_batch = self.scale_input([z_batch], **kwargs)
+        z_batch = self.scale_input([z_batch], **kwargs)[0]
 
         # interpolate initial state and standardized target
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
