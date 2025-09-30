@@ -1,6 +1,6 @@
 from src.flow_matching.models import MLPGuidedVectorField, FRBLightCurveCNN, LightCurveThinner, fourier_embedding, LightCurveMLP, UNetEncoder, TransdimensionalModel, EncodedClassifier
 from src.flow_matching.transformer import TransformerGuidedField
-from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform
+from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform, StandardGaussian
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 
 import yaml
@@ -32,9 +32,10 @@ TAU_ENCODERS = {
     False : None 
 }
 
+param_dim = 4
 THETA_ENCODERS = {
-    # True : lambda theta_dim : build_mlp([2] + [2 * 4, 2 * 8] + [theta_dim]),
-    True : lambda theta_dim : build_mlp([4] + [4 * 8, 4 * 32] + [theta_dim]),
+    True : lambda theta_dim: build_mlp([param_dim] + [param_dim * 4, param_dim * 8, param_dim * 8, param_dim * 16, param_dim * 16] + [theta_dim]),
+    # True : lambda theta_dim : build_mlp([4] + [4 * 8, 4 * 32] + [theta_dim]),
     False : None
 }
 
@@ -46,7 +47,8 @@ DISTRIBUTIONS = {
     "Posterior":     Posterior,
     "UniformPrior":  UniformPrior,
     "CompositePrior":CompositePrior,
-    "NewPosterior":  Posterior
+    "NewPosterior":  Posterior,
+    "StandardGaussian": StandardGaussian
 }
 
 CLASSIFIERS = {
@@ -73,7 +75,6 @@ def empty_model_from_config(config):
 
     if time_encoder:
         t_encoder_kwargs = config["time_seq_encoder"]["init_params"]
-
 
     kwargs['time_seq_encoder']  = None if not time_encoder else TIME_ENCODERS[time_encoder](**t_encoder_kwargs)
     kwargs['tau_encoder']   = TAU_ENCODERS[config["tau_encoder"]]
@@ -134,7 +135,6 @@ def prob_path_from_config(config):
     p_data_cls = DISTRIBUTIONS[p_data_name]
 
     kwargs = config["path"]["p_data"]["init_params"]
-    kwargs.pop('prior') if kwargs.get('prior', False) else None
     kwargs['model_params']['time'] = torch.linspace(0, 1, 1000)
     
     N_prior = config['training'].get('fixed_N', None)
@@ -142,7 +142,25 @@ def prob_path_from_config(config):
         N_prior = DiscreteUniform(kwargs['model_params']['ncomp'], kwargs['model_params']['ncomp'])
     else:
         N_prior = None
-    p_data = p_data_cls(prior=p_simple, N_prior=N_prior, **kwargs)
+
+    # for old version
+    if p_simple_name == "CompositePrior":
+        kwargs.pop('prior') if kwargs.get('prior', False) else None
+        p_data = p_data_cls(prior=p_simple, N_prior=N_prior, **kwargs)
+    # for new version
+    else:
+        print(kwargs)
+        prior_cls = DISTRIBUTIONS[kwargs['prior']['name']]
+        prior_dict = {}
+        for param, sub_prior in zip(inf_params, kwargs['prior']['init_params']):
+            sub_prior_cls = DISTRIBUTIONS[sub_prior['name']]
+            print(sub_prior['init_params'])
+            prior_dict[param] = sub_prior_cls(**sub_prior['init_params'])
+
+        prior = prior_cls(prior_dict)
+        kwargs.pop('prior') if kwargs.get('prior', False) else None
+        p_data = p_data_cls(prior=prior, N_prior=N_prior, **kwargs)
+        
     path = path_class(p_simple, p_data)
     
     return path
