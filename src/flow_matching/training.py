@@ -241,12 +241,12 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         power = (1 + alpha) / (2 + alpha)
         t_batch = torch.pow(u, power)
 
-        # interpolate initial state and target
+        # standardize targets
+        z_batch = self.scale_input([z_batch], **kwargs)
+
+        # interpolate initial state and standardized target
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
         
-        # standardize
-        x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
-
         # scale lightcurve
         AVG_AMP = 150
         y_batch = y_batch / AVG_AMP
@@ -297,12 +297,12 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         power = (1 + alpha) / (2 + alpha)
         t_batch = torch.pow(u, power)
 
-        # interpolate initial state and target
+        # standardize targets
+        z_batch = self.scale_input([z_batch], **kwargs)
+
+        # interpolate initial state and standardized target
         x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
         
-        # standardize
-        x0_batch, x_batch, z_batch = self.scale_input([x0_batch, x_batch, z_batch], **kwargs)
-
         # scale lightcurve
         AVG_AMP = 150
         y_batch = y_batch / AVG_AMP 
