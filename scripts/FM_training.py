@@ -183,7 +183,7 @@ def main(N: int,
     # for scaling of targets 
     N_prior_samples = N_prior.sample(10_000)
     MEAN, STD = get_sample_mean_std(
-        path.p_simple, N, inf_params, N_prior_samples, num_samples=10_000, device=device
+        prior, N, inf_params, N_prior_samples, num_samples=10_000, device=device
         )
             
     # encoders
