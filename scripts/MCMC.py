@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import yaml 
+import time as t
 
 from multiprocessing import Pool
 from corner import corner 
@@ -31,12 +32,21 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     """
     Run MCMC sampler.
     """
+    # define the priors
+    PRIORS = {
+        "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
+        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
+        "rise": UniformPrior(x_min=1e-3, x_max=0.1,  log=True, enforce_order=False, dim=N),
+        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
+    }
+
     time = np.linspace(0, 1.0, 1000)
 
-    amp  = [float(np.log10(100)) for _ in range(N)]
+    # amp  = [float(np.log10(100)) for _ in range(N)]
+    amp  = [float(np.log10(100)), float(np.log10(34)), float(np.log10(50)), float(np.log10(89)), float(np.log10(50))]
     t0   = [float(t) for t in list(np.linspace(0.3, 0.7, N))]
     rise = [float(np.log10(0.03)) for _ in range(N)]
-    skew = [5.0 for _ in range(N)]
+    skew = [2.0 for _ in range(N)]
 
     burstparams = {
         't0'   : t0,
@@ -44,6 +54,8 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         'rise' : rise,
         'skew' : skew
         }
+    # burstparams = {key:PRIORS[key].sample(1)[0] for key in PRIORS}
+    # burstparams['amp'] = amp
     print(f"Doing inference on a burst with {N} component(s) and burstparams: {burstparams}")
     ybkg = 5.0
 
@@ -61,25 +73,17 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         'ybkg': ybkg
     }
 
-    # define the priors
-    prior_dict = {
-        "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
-        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
-        "rise": UniformPrior(x_min=1e-3, x_max=1,  log=True, enforce_order=False, dim=N),
-        "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
-    }
-
     # https://emcee.readthedocs.io/en/stable/tutorials/quickstart/
     pool = Pool() if parallel else None
     ndim = len(inf_params) * N
-    p0 = [prior_dict[key].sample(nwalkers) for key in inf_params]
+    p0 = [PRIORS[key].sample(nwalkers) for key in inf_params]
     p0 = np.concatenate(p0, axis=1)
         
     sampler = emcee.EnsembleSampler(
         nwalkers, 
         ndim, 
         log_posterior, 
-        args=[inf_params, prior_dict, modelparams, simulated_counts], 
+        args=[inf_params, PRIORS, modelparams, simulated_counts], 
         pool=pool
         )
 
@@ -87,7 +91,7 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     print("_________________________________________")           
     print("\n1. RUN TO DETERMINE BEST INITIAL POSITION")
     print("_________________________________________\n") 
-
+    start_time = t.time()
     state = sampler.run_mcmc(p0, burn_steps, progress=True)
     sampler.reset()
 
@@ -101,8 +105,8 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
 
     print(f"\n Repositioned {sum(low_prob_mask)} of {nwalkers} walkers...")
     
-    if sum(low_prob_mask) / nwalkers > 0.5:
-        print("ERROR: Had to reposition more than 50% of walkers, increase number of burn steps or re-run")
+    if sum(low_prob_mask) / nwalkers > 0.8:
+        print("ERROR: Had to reposition more than 80% of walkers, increase number of burn steps or re-run")
         return 1
 
     # burn-in with repositioned walkers
@@ -143,8 +147,8 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         # convergence failed
         if sampler.iteration == max_steps and not converged:
             print(f"\n ConvergenceError: Convergence condition not satisfied within {max_steps} steps. Try increasing the max_steps argument or re-run.")
-            # return
-
+            return
+    run_time = t.time() - start_time
     print(f"\n -> Converged after {sampler.iteration} steps \n")
   
     if parallel:
@@ -159,11 +163,16 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         save_dir = "../MCMC_runs/run_" + timestamp
         os.makedirs(save_dir)
         
+        for key in burstparams:
+            burstparams[key] = list(burstparams[key])
+
         # save settings yaml
         settings = {
             "N":N,
             "inf_params":inf_params,
-            "burstparams":burstparams
+            "burstparams":burstparams,
+            "runtime": run_time,
+            "iterations": sampler.iteration
         }
         with open(os.path.join(save_dir, "settings.yaml"), "w") as f:
             yaml.dump(settings, f, sort_keys=False)
@@ -229,9 +238,9 @@ if __name__=="__main__":
     parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in sampled data")
     parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names.", required=True)
 
-    parser.add_argument("-w", "--walkers", type=int, default=20,   help="Number of walkers")
-    parser.add_argument("--max_steps",   type=int, default=10_000, help="Maximum number of iterations before convergence")
-    parser.add_argument("-b", "--burn",    type=int, default=1500,  help="burn steps, number of burn-in steps used")
+    parser.add_argument("-w", "--walkers", type=int, default=20,   help="Number of walkers. Default is 20.")
+    parser.add_argument("--max_steps",   type=int, default=10_000, help="Maximum number of iterations before convergence. Default is 10000")
+    parser.add_argument("-b", "--burn",    type=int, default=1500,  help="burn steps, number of burn-in steps used. Default is 1500.")
     parser.add_argument("--fast", action="store_true", help="speed up sampling by using parallelization")
     parser.add_argument("--save", action="store_true", help="save run to files and evaluation plots as png")
     parser.add_argument("--show_plots", action="store_true", help="show plots at the end of run")
