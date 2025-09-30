@@ -5,7 +5,7 @@ import sys
 sys.path.append('..')
 from copy import deepcopy
 from datetime import datetime
-from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform
+from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform, StandardGaussian
 from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
 from src.flow_matching.models import (
@@ -83,7 +83,8 @@ def pick_theta_encoder(encode: bool, inf_params: list[str], model: str, dim: int
 
     elif encode:
         param_dim = len(inf_params)
-        return lambda theta_dim: build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
+        # return lambda theta_dim: build_mlp([param_dim] + [param_dim * 8, param_dim * 32] + [theta_dim])
+        return lambda theta_dim: build_mlp([param_dim] + [param_dim * 4, param_dim * 8, param_dim * 8, param_dim * 16, param_dim * 16] + [theta_dim])
 
     return None
 
@@ -170,17 +171,22 @@ def main(N: int,
     N_prior   = DiscreteUniform(N_min, N, device=device)
     posterior = Posterior(deepcopy(MODELPARAMS), inf_params, prior, N_prior, noise)
 
-    path = GuidedLinearProbabilityPath(
-        p_simple = prior,
-        p_data   = posterior
-    )
-
-    N_prior_samples = N_prior.sample(10_000)
-    MEAN, STD = get_sample_mean_std(prior, N, inf_params, N_prior_samples, num_samples=10_000, device=device)    
-
     # dimension of vector field
     DIM = N * len(inf_params)
 
+    path = GuidedLinearProbabilityPath(
+        # p_simple = prior,
+        p_simple = StandardGaussian(DIM, device),
+        p_data   = posterior
+    )
+
+    MEAN, STD = (torch.zeros(DIM, device=device), torch.ones(DIM, device=device))
+    if isinstance(path.p_simple, CompositePrior):
+        N_prior_samples = N_prior.sample(10_000)
+        MEAN, STD = get_sample_mean_std(
+            path.p_simple, N, inf_params, N_prior_samples, num_samples=10_000, device=device
+            )
+            
     # encoders
     tau_encoder   = fourier_embedding if encode_tau else None
     theta_encoder = pick_theta_encoder(encode_theta, inf_params, model, DIM)

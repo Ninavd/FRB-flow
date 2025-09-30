@@ -224,7 +224,7 @@ class Posterior(Sampleable):
                 "model_params": model_params,
                 "inf_params": self.inf_params,
                 "noise":self.noise,
-                "prior": self.prior.__class__.__name__
+                "prior": self.prior.get_config()
             }
         }
         return config
@@ -307,22 +307,50 @@ class PeaktimePosterior(Sampleable):
     def get_config(self):
         return self.__class__.__name__
 
-class Gaussian(torch.nn.Module, Sampleable):
+class StandardGaussian(torch.nn.Module, Sampleable):
     """
-    Multivariate Gaussian distribution
+    Multivariate Standard Gaussian distribution N(0, 1)
     """
-    def __init__(self, mean: torch.Tensor, cov: torch.Tensor):
+    def __init__(self, dim, device=None):
         """
         mean: shape (dim,)
         cov: shape (dim,dim)
         """
         super().__init__()
-        self.register_buffer("mean", mean)
-        self.register_buffer("cov", cov)
+        self.dim = dim
+        self.mean = torch.zeros(dim, device=device)
+        self.cov = torch.eye(dim, device=device)
+        self.device = device
+        self.distribution = D.MultivariateNormal(self.mean, self.cov, validate_args=False)
 
-    @property
-    def distribution(self):
-        return D.MultivariateNormal(self.mean, self.cov, validate_args=False)
+    def sample(self, num_samples, **kwargs) -> torch.Tensor:
+        return self.distribution.sample((num_samples,))
+
+    def get_config(self):
+        config = {
+            "name":self.__class__.__name__,
+            "init_params":
+            {
+                "dim": self.dim,
+                "device":str(self.mean.device),
+            }
+        }
+        return config
+
+class Gaussian(torch.nn.Module, Sampleable):
+    """
+    Multivariate Gaussian distribution
+    """
+    def __init__(self, mean: torch.Tensor, cov: torch.Tensor, device=None):
+        """
+        mean: shape (dim,)
+        cov: shape (dim,dim)
+        """
+        super().__init__()
+        self.register_buffer("mean", mean, device=device)
+        self.register_buffer("cov", cov, device=device)
+        self.device = device
+        self.distribution = D.MultivariateNormal(self.mean, self.cov, validate_args=False)
 
     def sample(self, num_samples) -> torch.Tensor:
         return self.distribution.sample((num_samples,))
