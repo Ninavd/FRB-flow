@@ -235,10 +235,10 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         x0_batch = self.path.p_simple.sample(batch_size, Ns=Ns) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
-        # t ~ t^(1/1+a) (inverse sampling)
+        # t ~ t^a (inverse sampling)
         u = torch.rand(batch_size, 1, device=device)
-        alpha = -0.25
-        power = (1 + alpha) / (2 + alpha)
+        alpha = 1.333
+        power = 1 / (1 + alpha)
         t_batch = torch.pow(u, power)
 
         # standardize targets
@@ -291,10 +291,10 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         x0_batch = self.path.p_simple.sample(batch_size, Ns=N_batch) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
-        # t ~ t^(1/1+a) (inverse sampling)
+        # t ~ t^a (inverse sampling)
         u = torch.rand(batch_size, 1, device=device)
-        alpha = -0.25
-        power = (1 + alpha) / (2 + alpha)
+        alpha = 1.333
+        power = 1 / (1 + alpha)
         t_batch = torch.pow(u, power)
 
         # standardize targets
