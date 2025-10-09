@@ -180,12 +180,11 @@ def main(N: int,
         p_data   = posterior
     )
 
-    MEAN, STD = (torch.zeros(DIM, device=device), torch.ones(DIM, device=device))
-    if isinstance(path.p_simple, CompositePrior):
-        N_prior_samples = N_prior.sample(10_000)
-        MEAN, STD = get_sample_mean_std(
-            path.p_simple, N, inf_params, N_prior_samples, num_samples=10_000, device=device
-            )
+    # for scaling of targets 
+    N_prior_samples = N_prior.sample(10_000)
+    MEAN, STD = get_sample_mean_std(
+        prior, N, inf_params, N_prior_samples, num_samples=10_000, device=device
+        )
             
     # encoders
     tau_encoder   = fourier_embedding if encode_tau else None
