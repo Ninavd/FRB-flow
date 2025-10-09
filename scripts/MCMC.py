@@ -25,25 +25,26 @@ from src.MCMC.priors import UniformPrior
 
 # prevent numpy slow down when parallelizing MCMC
 import os
+import pandas as pd
 os.environ["OMP_NUM_THREADS"] = "1"
 
-def main(N, inf_params, nwalkers, burn_steps, max_steps,
-         parallel, save, show_plots):
+def main(N, inf_params, noise, nwalkers, burn_steps, max_steps,
+         parallel, save, show_plots, FRB):
     """
     Run MCMC sampler.
     """
     # define the priors
     PRIORS = {
         "t0"  : UniformPrior(x_min=0.2,    x_max=0.8,   log=False, enforce_order=True, dim=N),
-        "amp" : UniformPrior(x_min=10,   x_max=300, log=True,  enforce_order=False, dim=N),
+        "amp" : UniformPrior(x_min=1,   x_max=300, log=True,  enforce_order=False, dim=N),
         "rise": UniformPrior(x_min=1e-3, x_max=0.1,  log=True, enforce_order=False, dim=N),
         "skew": UniformPrior(x_min=1,    x_max=6,   log=False, enforce_order=False, dim=N)
     }
 
     time = np.linspace(0, 1.0, 1000)
 
-    # amp  = [float(np.log10(100)) for _ in range(N)]
-    amp  = [float(np.log10(100)), float(np.log10(34)), float(np.log10(50)), float(np.log10(89)), float(np.log10(50))]
+    amp  = [float(np.log10(100)) for _ in range(N)]
+    # amp  = [float(np.log10(100)), float(np.log10(34)), float(np.log10(50)), float(np.log10(89)), float(np.log10(50))]
     t0   = [float(t) for t in list(np.linspace(0.3, 0.7, N))]
     rise = [float(np.log10(0.03)) for _ in range(N)]
     skew = [2.0 for _ in range(N)]
@@ -57,14 +58,19 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     # burstparams = {key:PRIORS[key].sample(1)[0] for key in PRIORS}
     # burstparams['amp'] = amp
     print(f"Doing inference on a burst with {N} component(s) and burstparams: {burstparams}")
-    ybkg = 5.0
+    ybkg = 0.0
 
     model     = Model(time, N, deepcopy(burstparams), ybkg)
     simulator = BurstSimulator(model)
-    simulated_counts = simulator.simulate_burst()
+    simulated_counts = simulator.simulate_burst(noise=noise)
 
     true_values = np.array([burstparams[key] for key in inf_params])
     true_values = true_values.flatten()
+
+    if FRB:
+        df = pd.read_csv('../observational_data/FRBs/'+ FRB + '.dat', header=None, delimiter=' ')
+        simulated_counts = np.array(df[0])
+        simulator.simulated_counts = simulated_counts
 
     modelparams = {
         'time' : time,
@@ -82,7 +88,8 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     sampler = emcee.EnsembleSampler(
         nwalkers, 
         ndim, 
-        log_posterior, 
+        log_posterior,
+        kwargs={'noise':noise}, 
         args=[inf_params, PRIORS, modelparams, simulated_counts], 
         pool=pool
         )
@@ -104,9 +111,9 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     state.coords[low_prob_mask] = most_likely_pos * variations
 
     print(f"\n Repositioned {sum(low_prob_mask)} of {nwalkers} walkers...")
-    
-    if sum(low_prob_mask) / nwalkers > 0.8:
-        print("ERROR: Had to reposition more than 80% of walkers, increase number of burn steps or re-run")
+    # print(state.coords)
+    if sum(low_prob_mask) / nwalkers > 0.95:
+        print("ERROR: Had to reposition more than 95% of walkers, increase number of burn steps or re-run")
         return 1
 
     # burn-in with repositioned walkers
@@ -136,14 +143,14 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
         # Check convergence (from https://emcee.readthedocs.io/en/stable/tutorials/monitor/)
         # we assume convergence if the chain is longer than 100 x the estimated autocorrelation time 
         # and if this estimate changed by less than 1%
-        converged = np.all(tau * 100 < sampler.iteration)
-        converged &= np.all(np.abs(old_tau - tau) / tau < 0.01)
+        converged = np.all(tau * 80 < sampler.iteration)
+        converged &= np.all(np.abs(old_tau - tau) / tau < 0.05)
         N_checks += 1
         if converged:
             break
 
         old_tau = tau
-        
+        # print(old_tau)
         # convergence failed
         if sampler.iteration == max_steps and not converged:
             print(f"\n ConvergenceError: Convergence condition not satisfied within {max_steps} steps. Try increasing the max_steps argument or re-run.")
@@ -232,11 +239,16 @@ def main(N, inf_params, nwalkers, burn_steps, max_steps,
     print("Autocorrelation time: ", sampler.get_autocorr_time())
     print(f"Mean acceptance fraction: {np.mean(sampler.acceptance_fraction):.3f}")
 
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Run MCMC sampling algorithm")
 
+    valid_FRBs = {'FRB20190501B_lc', 'FRB20190115B_lc'}
+    noise_options = {"poisson", "gaussian"}
+
     parser.add_argument("-N","--ncomp", type=int, default=2, help="Number of burst components in sampled data")
     parser.add_argument("-i","--inf_params", nargs='+', help="List of inference parameter names.", required=True)
+    parser.add_argument("--noise", type=str, help="Type of noise added to training data (poisson or gaussian).", required=True, choices=noise_options)
 
     parser.add_argument("-w", "--walkers", type=int, default=20,   help="Number of walkers. Default is 20.")
     parser.add_argument("--max_steps",   type=int, default=10_000, help="Maximum number of iterations before convergence. Default is 10000")
@@ -244,9 +256,10 @@ if __name__=="__main__":
     parser.add_argument("--fast", action="store_true", help="speed up sampling by using parallelization")
     parser.add_argument("--save", action="store_true", help="save run to files and evaluation plots as png")
     parser.add_argument("--show_plots", action="store_true", help="show plots at the end of run")
+    parser.add_argument("-f", "--FRB", type=str, default=None, choices=valid_FRBs, help="Name of FRB flux file to run mcmc on. True values are assumed unknown in this case.")
 
     args = parser.parse_args()
 
-    main(args.ncomp, args.inf_params, args.walkers, args.burn, args.max_steps,
-        args.fast, args.save, args.show_plots
+    main(args.ncomp, args.inf_params, args.noise, args.walkers, args.burn, args.max_steps,
+        args.fast, args.save, args.show_plots, args.FRB
         )

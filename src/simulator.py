@@ -98,7 +98,7 @@ class BurstSimulator:
         """
         self.model = model
     
-    def simulate_burst(self, return_model=False):
+    def simulate_burst(self, return_model=False, noise='poisson'):
         """
         Simulate a realistic burst by adding poisson noise
         to the model.
@@ -115,7 +115,10 @@ class BurstSimulator:
             simulated counts    
         """
         model = self.model.get_flux()
-        self.simulated_counts = self.add_poisson_noise(model)
+        if noise == 'poisson':
+            self.simulated_counts = self.add_poisson_noise(model)
+        else:
+            self.simulated_counts = self.add_gaussian_noise(model)
 
         if return_model:
             return self.model, self.simulated_counts
@@ -127,6 +130,13 @@ class BurstSimulator:
         Adds poisson noise to the modelled light curve
         """
         counts = np.random.poisson(model)
+        return counts
+    
+    def add_gaussian_noise(self, model):
+        """
+        Adds poisson noise to the modelled light curve
+        """
+        counts = model + np.random.normal(size=model.shape)
         return counts
 
     def get_true(self, param: str):

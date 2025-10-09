@@ -5,7 +5,7 @@ from typing import Iterable
 from src.simulator import Model
 from src.helpers import update_modelparams
 
-def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simulated_counts: Iterable[int]) -> float:
+def poisson_log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simulated_counts: Iterable[int]) -> float:
     """
     $ln(p(x_{counts} | t0)$
     natural logarithm of poisson likelihood.
@@ -34,6 +34,31 @@ def log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simu
     # TODO: Compare w/ likelihood function of Daniela
     return L
 
+def gaussian_log_likelihood(theta: Iterable[float], inf_params, priors, modelparams, simulated_counts: Iterable[int]) -> float:
+    """
+    $ln(p(x_{counts} | theta)$
+    natural logarithm of gaussian likelihood.
+
+    Args:
+        theta:       vector with sampled inference parameters
+        inf_params:  keys of inference parameters, f.e. [t0, amp]
+        modelparams: dictionary of all model parameters used to generate original burst
+        simulated_counts: binned counts of simulated counts
+    """
+    
+    # extract parameters from theta to update model params
+    modelparams = update_modelparams(theta, inf_params, modelparams)
+
+    # find noise-free flux
+    model_counts = Model(**modelparams).get_flux()
+    
+    # likelihood of the observed counts under this model
+    L = (
+        -1 * np.sum(np.pow(simulated_counts - model_counts, 2)) 
+    )
+    return L
+
+
 def log_priors(theta, *args):
     """
     Find the value of the prior encompassing all the parameters.
@@ -55,7 +80,7 @@ def log_priors(theta, *args):
     
     return log_prob
 
-def log_posterior(theta: Iterable[float], *args) -> float:
+def log_posterior(theta: Iterable[float], *args, noise='poisson') -> float:
     """
     Log of the posterior distribution.
     """
@@ -66,4 +91,6 @@ def log_posterior(theta: Iterable[float], *args) -> float:
         return -np.inf
     
     # if so, it's safe to find the likelihood
-    return log_prior_value + log_likelihood(theta, *args)
+    if noise == "gaussian":
+        return log_prior_value + gaussian_log_likelihood(theta, *args)
+    return log_prior_value + poisson_log_likelihood(theta, *args)
