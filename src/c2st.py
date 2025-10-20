@@ -5,7 +5,7 @@ from tqdm import tqdm
 from src.flow_matching.helpers import choose_device
 from src.flow_matching.models import GenericClassifier 
 
-def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
+def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor, num_epochs=100) -> float:
     """
     Trains a binary MLP classifier to distinguish 
     between two sets of samples.
@@ -50,7 +50,6 @@ def c2st(samples_1: torch.Tensor, samples_2: torch.Tensor) -> float:
     criterion = nn.BCELoss(reduction='sum')  
     optimizer = torch.optim.Adam(classifier.parameters(), lr=1e-4)
     
-    num_epochs = 100
     batch_size = 256
     classifier.train()
 
