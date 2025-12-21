@@ -5,11 +5,20 @@ Source code for master project on flow matching for trans-dimensional simulation
 
 ## Installation 
 
-To get started, clone the repository and install the required packages: 
+To get started, clone the repository 
 ```bash
 git clone https://github.com/Ninavd/FRB-flow.git
 cd FRB-flow
+```
+
+and install the required packages
+```
 pip install -r requirements.txt
+```
+
+or recreate the conda environment using the environment file
+```
+conda env create --file environment.yml
 ```
 
 ## Repository structure
