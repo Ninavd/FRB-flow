@@ -347,8 +347,8 @@ class Gaussian(torch.nn.Module, Sampleable):
         cov: shape (dim,dim)
         """
         super().__init__()
-        self.register_buffer("mean", mean, device=device)
-        self.register_buffer("cov", cov, device=device)
+        self.register_buffer("mean", mean)
+        self.register_buffer("cov", cov)
         self.device = device
         self.distribution = D.MultivariateNormal(self.mean, self.cov, validate_args=False)
 
@@ -356,10 +356,10 @@ class Gaussian(torch.nn.Module, Sampleable):
         return self.distribution.sample((num_samples,))
 
     @classmethod
-    def isotropic(cls, dim: int, std: float) -> "Gaussian":
-        mean = torch.zeros(dim)
-        cov = torch.eye(dim) * std ** 2
-        return cls(mean, cov)
+    def isotropic(cls, dim: int, std: float, device=None) -> "Gaussian":
+        mean = torch.zeros(dim, device=device)
+        cov = torch.eye(dim, device=device) * std ** 2
+        return cls(mean, cov, device=device)
     
 class CheckerboardSampleable(Sampleable):
     """
