@@ -1,7 +1,10 @@
 # FRB-flow
 <img width="3300" height="1200" alt="FRB20190122C(2)" src="https://github.com/user-attachments/assets/a37c1097-7135-4f68-92bd-e589ce1bc43a" />
 
-Source code for master project on flow matching for trans-dimensional simulation-based inference on fast astronomical transients.
+Source code for project on flow matching for trans-dimensional simulation-based inference on fast astronomical transients. 
+
+Read the associated paper (pre-print) here:<br>
+📄[Fast Inference on Astronomical Time Series with Trans-Dimensional Flow Matching Posterior Estimation](https://arxiv.org/abs/2607.21134)
 
 ## Installation 
 
@@ -11,12 +14,7 @@ git clone https://github.com/Ninavd/FRB-flow.git
 cd FRB-flow
 ```
 
-and install the required packages
-```
-pip install -r requirements.txt
-```
-
-or recreate the conda environment using the environment file
+recreate the conda environment using the environment file
 ```
 conda env create --file environment.yml
 ```
@@ -42,6 +40,7 @@ conda env create --file environment.yml
 |         ├── integration.py
 |         ├── loader.py
 |         ├── models.py
+|         ├── neural_posterior.py
 |         ├── plotting.py
 |         ├── probability_path.py
 |         ├── simulator.py
@@ -53,4 +52,6 @@ conda env create --file environment.yml
 │        ├── posterior.py
 │        └── priors.py 
 ├── c2st.py 
+├── helpers.py 
+├── simulator.py 
 ```
