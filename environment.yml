@@ -127,6 +127,7 @@ dependencies:
   - zstandard=0.23.0
   - zstd=1.5.6
   - pip:
+      - absl-py==2.5.1
       - annotated-types==0.7.0
       - arviz==0.21.0
       - attrs==25.4.0
@@ -145,6 +146,7 @@ dependencies:
       - filelock==3.13.1
       - fonttools==4.58.1
       - fsspec==2024.6.1
+      - grpcio==1.85.0
       - h5netcdf==1.6.3
       - h5py==3.14.0
       - idna==3.10
@@ -155,6 +157,7 @@ dependencies:
       - jsonschema-specifications==2025.9.1
       - jupyterlab-pygments==0.3.0
       - kiwisolver==1.4.8
+      - markdown==3.10.3
       - markupsafe==2.1.5
       - matplotlib==3.10.3
       - mistune==3.1.4
@@ -163,6 +166,7 @@ dependencies:
       - nbconvert==7.16.6
       - nbformat==5.10.4
       - networkx==3.3
+      - nflows==0.14
       - numpy==2.1.2
       - nvidia-cublas-cu11==11.11.3.6
       - nvidia-cuda-cupti-cu11==11.8.87
@@ -187,11 +191,16 @@ dependencies:
       - referencing==0.37.0
       - requests==2.32.4
       - rpds-py==0.28.0
+      - sbi==0.27.0
       - scikit-learn==1.7.0
       - scipy==1.15.3
       - sentry-sdk==2.34.1
+      - skorch==1.4.0
       - soupsieve==2.8
       - sympy==1.13.3
+      - tabulate==0.10.0
+      - tensorboard==2.21.0
+      - tensorboard-data-server==0.7.2
       - threadpoolctl==3.6.0
       - tinycss2==1.4.0
       - torch==2.7.0+cu118
@@ -205,6 +214,8 @@ dependencies:
       - urllib3==2.5.0
       - wandb==0.21.1
       - webencodings==0.5.1
+      - werkzeug==3.1.9
       - xarray==2025.6.1
       - xarray-einstats==0.8.0
       - yarg==0.1.9
+      - zuko==1.6.0
