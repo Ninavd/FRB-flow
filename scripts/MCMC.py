@@ -1,31 +1,30 @@
 import sys
+
 sys.path.append('..')
 
-import arviz as az
 import argparse
-import emcee
-import numpy as np
-import matplotlib.pyplot as plt
+import os
 import pickle
-import yaml 
 import time as t
-
-from multiprocessing import Pool
-from corner import corner 
 from copy import deepcopy
-from datetime import datetime 
+from datetime import datetime
+from multiprocessing import Pool
 
-from src.simulator import BurstSimulator, Model
-from src.helpers import plot_posterior_samples
+import arviz as az
+import emcee
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import yaml
+from corner import corner
 
-from src.helpers import gen_parameter_labels
+from src.helpers import gen_parameter_labels, plot_posterior_samples
 from src.MCMC.plotting import plot_1d_hist
 from src.MCMC.posterior import log_posterior
 from src.MCMC.priors import UniformPrior
+from src.simulator import BurstSimulator, Model
 
 # prevent numpy slow down when parallelizing MCMC
-import os
-import pandas as pd
 os.environ["OMP_NUM_THREADS"] = "1"
 
 def main(N, inf_params, noise, nwalkers, burn_steps, max_steps,
@@ -143,7 +142,7 @@ def main(N, inf_params, noise, nwalkers, burn_steps, max_steps,
         # Check convergence (from https://emcee.readthedocs.io/en/stable/tutorials/monitor/)
         # we assume convergence if the chain is longer than 100 x the estimated autocorrelation time 
         # and if this estimate changed by less than 1%
-        converged = np.all(tau * 80 < sampler.iteration)
+        converged = np.all(tau * 100 < sampler.iteration)
         converged &= np.all(np.abs(old_tau - tau) / tau < 0.05)
         N_checks += 1
         if converged:
