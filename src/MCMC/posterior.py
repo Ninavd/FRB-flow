@@ -54,7 +54,7 @@ def gaussian_log_likelihood(theta: Iterable[float], inf_params, priors, modelpar
     
     # likelihood of the observed counts under this model
     L = (
-        -1 * np.sum(np.pow(simulated_counts - model_counts, 2)) 
+        -(1 /2) * np.sum(np.pow(simulated_counts - model_counts, 2)) 
     )
     return L
 
