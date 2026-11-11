@@ -1,7 +1,8 @@
-import torch 
+import torch
 from tqdm import tqdm
 
-class EulerODESolver():
+
+class EulerODESolver:
 
     """
     Solves ODE with Euler method.
@@ -67,7 +68,22 @@ class EulerODESolver():
 
         return torch.stack(xs, dim=1)
 
-class ODEBackwardSolver():
+class RK4ODESolver(EulerODESolver):
+    """
+    Solves ODE with fourth-order Runge-Kutta method.
+    """
+    def __init__(self, vector_field: torch.nn.Module):
+        super().__init__(vector_field)
+
+    def step(self, xt: torch.Tensor, t: torch.Tensor, h: torch.Tensor, **kwargs):
+        k1 =  self.vector_field(xt, t, **kwargs)
+        k2 =  self.vector_field(xt + h * k1/2, t + h/2, **kwargs) 
+        k3 =  self.vector_field(xt + h * k2/2, t + h/2, **kwargs) 
+        k4 =  self.vector_field(xt + h * k3, t + h, **kwargs) 
+        return xt + (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+
+class ODEBackwardSolver:
 
     """
     Solves two ODEs backwards (t: 1 -> 0) with Euler method.
@@ -91,7 +107,7 @@ class ODEBackwardSolver():
         """
         # h is negative for backwards integration
         x_prev = xt + h * self.vector_field(xt,t, **kwargs)
-        f_prev = ft - h[0] * self.divergence(self.vector_field(xt, t), xt)
+        f_prev = ft - h[0] * self.divergence(self.vector_field(xt, t, **kwargs), xt)
         return x_prev, f_prev
 
     def solve(self, x: torch.Tensor, ts: torch.Tensor, **kwargs):
