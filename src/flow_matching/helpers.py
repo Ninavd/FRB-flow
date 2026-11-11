@@ -1,11 +1,11 @@
-from datetime import datetime
 import os
-import torch.nn as nn 
-from typing import List, Type
-import torch 
+from datetime import datetime
+
+import torch
+from torch import nn
+
 
 def choose_device():
-    # choose and state device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if torch.backends.mps.is_available():
         device = torch.device('mps')
@@ -46,7 +46,7 @@ def get_sample_mean_std(prior, N, inf_params, N_prior_samples, num_samples: int,
     std = std.repeat_interleave(N)
     return mean, std
 
-def build_mlp(dims: List[int], activation: Type[nn.Module] = nn.SiLU):
+def build_mlp(dims: list[int], activation: type[nn.Module] = nn.SiLU):
     """
     Build multilayer perceptron and return it.
 

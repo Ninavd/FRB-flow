@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Tuple
-import torch 
-import torch.nn as nn
-from src.flow_matching.distributions import Sampleable 
+
+import torch
+from torch import nn
+
+from src.flow_matching.distributions import Sampleable
 
 ###########################
 # Conditional prob path
@@ -42,7 +43,7 @@ class ConditionalProbabilityPath(nn.Module, ABC):
         return x
 
     @abstractmethod
-    def sample_conditioning_variable(self, num_samples: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def sample_conditioning_variable(self, num_samples: int) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Samples the conditioning variable z and label y
         Args:

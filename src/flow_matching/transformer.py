@@ -1,10 +1,11 @@
 import numpy as np
 import torch
-import torch.nn as nn
-from src.flow_matching.helpers import build_mlp
+from torch import nn
+
 from src.flow_matching.distributions import PeaktimePosterior, PeaktimePrior
-from src.flow_matching.probability_path import GuidedLinearProbabilityPath
+from src.flow_matching.helpers import build_mlp
 from src.flow_matching.models import fourier_embedding
+from src.flow_matching.probability_path import GuidedLinearProbabilityPath
 
 
 class TransformerGuidedField(nn.Module):

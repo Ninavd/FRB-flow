@@ -1,18 +1,19 @@
-import numpy as np
 import os
-import torch 
-import torch.nn as nn
-import wandb
-import yaml 
-
 from abc import ABC, abstractmethod
 from datetime import datetime
-from tqdm import tqdm
-from ema_pytorch import EMA
 
-from src.flow_matching.probability_path import ConditionalProbabilityPath
+import numpy as np
+import torch
+import yaml
+from ema_pytorch import EMA
+from torch import nn
+from tqdm import tqdm
+
+import wandb
+from src.flow_matching.helpers import create_run_folder, model_size_b
 from src.flow_matching.models import TransdimensionalModel
-from src.flow_matching.helpers import model_size_b, create_run_folder
+from src.flow_matching.probability_path import ConditionalProbabilityPath
+
 
 class Trainer(ABC):
     """
@@ -143,11 +144,11 @@ class Trainer(ABC):
             "timestamp"            : timestamp
         }
         
-        filename = f"training_checkpoint"
+        filename = "training_checkpoint"
         torch.save(save_dict, os.path.join(self.save_path, filename + '.pth'))
 
     def save_ema_checkpoint(self, ema):
-        filename = f"EMA_checkpoint"
+        filename = "EMA_checkpoint"
         torch.save(ema.ema_model.state_dict(), os.path.join(self.save_path, filename + '.pth'))
 
     def make_config(self, num_epochs, lr, clip, batch_size, path, fixed_N, mean, std):
@@ -231,8 +232,8 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
 
     def prepare_batches(self, device, batch_size, **kwargs):
         # samples
-        z_batch, y_batch, Ns = self.path.p_data.sample(batch_size) # z, y ~ p_data
-        x0_batch = self.path.p_simple.sample(batch_size, Ns=Ns) # x_0 ~ p_simple
+        z_batch, y_batch, N_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
+        x0_batch = self.path.p_simple.sample(batch_size, Ns=N_batch) # x_0 ~ p_simple
         # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
 
         # t ~ t^a (inverse sampling)
@@ -249,9 +250,9 @@ class GuidedConditionalFlowMatchingTrainer(Trainer):
         
         # scale lightcurve
         AVG_AMP = 150
-        y_batch = y_batch / AVG_AMP
+        y_batch = y_batch / AVG_AMP 
 
-        return x0_batch, x_batch, z_batch, t_batch, y_batch, Ns
+        return x0_batch, x_batch, z_batch, t_batch, y_batch, N_batch
 
     def MSE(self, differences):
         squared_error = differences ** 2
@@ -284,30 +285,6 @@ class TransdimensionalTrainer(GuidedConditionalFlowMatchingTrainer):
         self.cross_entropy = nn.CrossEntropyLoss()
         self.N_classifier = model.component_classifier
         self.vector_field = model.vector_field_model
-
-    def prepare_batches(self, device, batch_size, **kwargs):
-        # samples
-        z_batch, y_batch, N_batch = self.path.p_data.sample(batch_size) # z, y ~ p_data
-        x0_batch = self.path.p_simple.sample(batch_size, Ns=N_batch) # x_0 ~ p_simple
-        # t_batch = torch.rand(batch_size, 1) # t ~ U(0, 1) 
-
-        # t ~ t^a (inverse sampling)
-        u = torch.rand(batch_size, 1, device=device)
-        alpha = 1.333
-        power = 1 / (1 + alpha)
-        t_batch = torch.pow(u, power)
-
-        # standardize targets
-        z_batch = self.scale_input([z_batch], **kwargs)[0]
-
-        # interpolate initial state and standardized target
-        x_batch = self.path.sample_conditional_path(x0_batch, z_batch, t_batch) # x ~ p(x|z)
-        
-        # scale lightcurve
-        AVG_AMP = 150
-        y_batch = y_batch / AVG_AMP 
-
-        return x0_batch, x_batch, z_batch, t_batch, y_batch, N_batch
     
     def get_train_loss(self, device: torch.device, batch_size: int, **kwargs) -> torch.Tensor:
         

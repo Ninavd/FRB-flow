@@ -13,9 +13,7 @@ from src.flow_matching.distributions import (
 from src.flow_matching.helpers import build_mlp, find_run_dir
 from src.flow_matching.models import (
     EncodedClassifier,
-    FRBLightCurveCNN,
     LightCurveMLP,
-    LightCurveThinner,
     MLPGuidedVectorField,
     TransdimensionalModel,
     UNetEncoder,
@@ -42,8 +40,6 @@ MODELS = {
 }
 
 TIME_ENCODERS = {
-    "LightCurveThinner": LightCurveThinner,
-    "FRBLightCurveCNN": FRBLightCurveCNN,
     "LightCurveMLP":LightCurveMLP,
     "UNetEncoder":UNetEncoder
 }
@@ -68,7 +64,6 @@ DISTRIBUTIONS = {
     "Posterior":     Posterior,
     "UniformPrior":  UniformPrior,
     "CompositePrior":CompositePrior,
-    "NewPosterior":  Posterior,
     "StandardGaussian": StandardGaussian
 }
 

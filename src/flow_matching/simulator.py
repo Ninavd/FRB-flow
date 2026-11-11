@@ -1,5 +1,6 @@
 import torch
 
+
 class Model:
 
     def __init__(self, time, ncomp, burstparams, ybkg=0.0, device=None):

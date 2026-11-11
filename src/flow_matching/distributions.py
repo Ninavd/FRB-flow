@@ -1,17 +1,18 @@
 from abc import ABC, abstractmethod
+
 import numpy as np
-from typing import Tuple, Optional
 import torch
 import torch.distributions as D
 
 from src.flow_matching.simulator import Model
+
 
 class Sampleable(ABC):
     """
     Base class for distribution which can be sampled from
     """ 
     @abstractmethod
-    def sample(self, num_samples: int) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def sample(self, num_samples: int) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Args:
             - num_samples: the desired number of samples
@@ -143,7 +144,7 @@ class CompositePrior(Sampleable):
 class Posterior(Sampleable):
 
     """
-    Samples z, y ~ p(z)p(y|z), where z=model params, y=simulated data.
+    Samples theta, y ~ p(theta)p(y|theta), where theta=model params, y=simulated data.
     """
 
     def __init__(self, model_params, inf_params, prior: CompositePrior, N_prior=None, noise='poisson'):
@@ -156,7 +157,7 @@ class Posterior(Sampleable):
         self.N_prior = DiscreteUniform(1, model_params['ncomp'], device=prior.device) if N_prior is None else N_prior
         self.noise = noise
 
-    def sample(self, num_samples: int) -> Tuple[torch.Tensor]:
+    def sample(self, num_samples: int) -> tuple[torch.Tensor]:
         """
         Args:
             num_samples: number of samples to generate
@@ -165,7 +166,7 @@ class Posterior(Sampleable):
             torch.Tensor: shape (num_samples, 100)
         """
         # parameter samples 
-        Ns = self.N_prior.sample((num_samples))
+        Ns = self.N_prior.sample(num_samples)
         prior_samples = self.prior.sample((num_samples), Ns=Ns)
 
         burstparams = self.model_params['burstparams']
@@ -273,7 +274,7 @@ class PeaktimePosterior(Sampleable):
             'skew' : torch.Tensor([skew, skew])
         }
     
-    def sample(self, num_samples: int, prior) -> Tuple[torch.Tensor]:
+    def sample(self, num_samples: int, prior) -> tuple[torch.Tensor]:
         """
         Args:
             num_samples: number of samples to generate
@@ -282,7 +283,7 @@ class PeaktimePosterior(Sampleable):
             torch.Tensor: shape (num_samples, 100)
         """
         # t0 samples 
-        prior_samples = prior.sample((num_samples))
+        prior_samples = prior.sample(num_samples)
         burstparams = self.burstparams
         
         burstparams['t0'] = prior_samples

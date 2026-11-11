@@ -5,27 +5,34 @@ import sys
 sys.path.append('..')
 from copy import deepcopy
 from datetime import datetime
-from src.flow_matching.distributions import UniformPrior, CompositePrior, Posterior, DiscreteUniform, StandardGaussian
-from src.flow_matching.probability_path import GuidedLinearProbabilityPath
-from src.flow_matching.training import GuidedConditionalFlowMatchingTrainer, TransdimensionalTrainer
-from src.flow_matching.models import (
-    MLPGuidedVectorField,
-    FRBLightCurveCNN,
-    LightCurveThinner,
-    LightCurveMLP,
-    fourier_embedding,
-    UNetEncoder,
-    EncodedClassifier,
-    TransdimensionalModel
-)
-from src.flow_matching.transformer import TransformerGuidedField
 
 import numpy as np
 import torch
-import wandb
 
+import wandb
+from src.flow_matching.distributions import (
+    CompositePrior,
+    DiscreteUniform,
+    Posterior,
+    StandardGaussian,
+    UniformPrior,
+)
+from src.flow_matching.helpers import build_mlp, choose_device, get_sample_mean_std
+from src.flow_matching.models import (
+    EncodedClassifier,
+    LightCurveMLP,
+    MLPGuidedVectorField,
+    TransdimensionalModel,
+    UNetEncoder,
+    fourier_embedding,
+)
 from src.flow_matching.plotting import evaluation_plots
-from src.flow_matching.helpers import choose_device, build_mlp, get_sample_mean_std
+from src.flow_matching.probability_path import GuidedLinearProbabilityPath
+from src.flow_matching.training import (
+    GuidedConditionalFlowMatchingTrainer,
+    TransdimensionalTrainer,
+)
+from src.flow_matching.transformer import TransformerGuidedField
 
 
 def pick_timeseries_encoder(type: str) -> tuple[int, torch.nn.Module | None]:
@@ -39,15 +46,7 @@ def pick_timeseries_encoder(type: str) -> tuple[int, torch.nn.Module | None]:
             - int: Latent dimension of encoded time series.
             - nn.Module or None: The selected time series encoder.
     """
-    if type == "CNN":
-        latent_dim = 128
-        time_seq_encoder = FRBLightCurveCNN(latent_dim=latent_dim)
-
-    elif type == "THIN":
-        latent_dim = 100
-        time_seq_encoder = LightCurveThinner(latent_dim)
-
-    elif type == "MLP":
+    if type == "MLP":
         latent_dim = 128
         time_seq_encoder = LightCurveMLP(layers=[1000, 512, 256, 128])
 
@@ -293,8 +292,8 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description="Train flow matching model and save evaluation plots")
     
     valid_models = ["MLP", "T"]
-    valid_encoders = ["CNN", "THIN", "MLP", "NULL", "UNET"]
-    valid_combine_modes = ["GLU", "concat"]
+    valid_encoders = ["MLP", "NULL", "UNET"]
+    valid_combine_modes = ["concat"]
     valid_inf_params = {"t0", "amp", "skew", "rise"}
     noise_options = ["gaussian", "poisson"]
 
@@ -307,11 +306,11 @@ if __name__=="__main__":
     # ML model
     parser.add_argument("-m", "--model", type=str, default="MLP", help="Model to train (MLP or T) T=Transformer", choices=valid_models)
 
-    parser.add_argument("-c", "--encoder", type=str, default="MLP", help="Time series encoder (CNN or THIN or MLP or T or UNET or NULL)", choices=valid_encoders)
+    parser.add_argument("-c", "--encoder", type=str, default="MLP", help="Time series encoder (MLP or UNET or NULL)", choices=valid_encoders)
     parser.add_argument("--encode_tau", action="store_true", help="Use fourier embedding for tau (flow matching time)")
     parser.add_argument("--encode_theta", action="store_true", help="Use MLP embedding for theta (parameter vector)")
  
-    parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [GLU or concat]", choices=valid_combine_modes)
+    parser.add_argument("--combine_mode", type=str, default="concat", help="how to combine the vectors [concat]", choices=valid_combine_modes)
     parser.add_argument("--add_pos_enc", action="store_true", help="When selected model is transformer, use positional encoding. This also auto-selects a sorted t0 prior.")
 
     # training
